@@ -1,42 +1,41 @@
 <?php 
-if ( ! function_exists('climed_register_customer') ) {
+if ( ! function_exists('climed_register_schedules') ) {
 
 // Register Custom Post Type
-function climed_register_customer() {
+function climed_register_schedules() {
 
 	$labels = array(
-		'name'                => _x( 'Customers', 'Post Type General Name', 'climed' ),
-		'singular_name'       => _x( 'Customer', 'Post Type Singular Name', 'climed' ),
-		'menu_name'           => __( 'Customers', 'climed' ),
-		'parent_item_colon'   => __( 'Parent Costumer:', 'climed' ),
-		'all_items'           => __( 'All Costumers', 'climed' ),
-		'view_item'           => __( 'View Costumer Info.', 'climed' ),
-		'add_new_item'        => __( 'Add New Costumer', 'climed' ),
+		'name'                => _x( 'Schedules', 'Post Type General Name', 'climed' ),
+		'singular_name'       => _x( 'Schedules', 'Post Type Singular Name', 'climed' ),
+		'menu_name'           => __( 'Schedules', 'climed' ),
+		'parent_item_colon'   => __( 'Parent Schedules:', 'climed' ),
+		'all_items'           => __( 'All Scheduless', 'climed' ),
+		'view_item'           => __( 'View Schedules Info.', 'climed' ),
+		'add_new_item'        => __( 'Add New Schedules', 'climed' ),
 		'add_new'             => __( 'Add New', 'climed' ),
-		'edit_item'           => __( 'Edit Costumer', 'climed' ),
-		'update_item'         => __( 'Update Costumer', 'climed' ),
+		'edit_item'           => __( 'Edit Schedules', 'climed' ),
+		'update_item'         => __( 'Update Schedules', 'climed' ),
 		'search_items'        => __( 'Search Costumers', 'climed' ),
 		'not_found'           => __( 'Not found', 'climed' ),
 		'not_found_in_trash'  => __( 'Not found in Trash', 'climed' ),
 	);
 
 	$rewrite = array(
-		'slug'                => 'customers',
+		'slug'                => 'schedules',
 		'with_front'          => true,
 		'pages'               => true,
 		'feeds'               => true,
 	);
 
 	$args = array(
-		'label'               => __( 'Customers', 'climed' ),
-		'description'         => __( 'People wich receives care', 'climed' ),
+		'label'               => __( 'Schedules', 'climed' ),
+		'description'         => __( 'All attendances', 'climed' ),
 		'labels'              => $labels,
 		'supports'            => array( 'title', 'editor', 'thumbnail', ),
 		'hierarchical'        => false,
 		'public'              => true,
 		'show_ui'             => true,
 		'show_in_menu'        => true,
-		'menu_icon' 		  => 'dashicons-id',
 		'show_in_nav_menus'   => true,
 		'show_in_admin_bar'   => true,
 		'menu_position'       => 5,
@@ -48,10 +47,10 @@ function climed_register_customer() {
 		'capability_type'     => 'post',
 	);
 
-	register_post_type( 'cm_customers', $args );
+	register_post_type( 'cm_schedules', $args );
 
 }
 
 // Hook into the 'init' action
-add_action( 'init', 'climed_register_customer', 0 );
+add_action( 'init', 'climed_register_schedules', 0 );
 }?>

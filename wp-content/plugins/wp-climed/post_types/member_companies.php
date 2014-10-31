@@ -36,6 +36,7 @@ function climed_register_member_companies() {
 		'public'              => true,
 		'show_ui'             => true,
 		'show_in_menu'        => true,
+		'menu_icon' 		  => 'dashicons-admin-home',
 		'show_in_nav_menus'   => true,
 		'show_in_admin_bar'   => true,
 		'menu_position'       => 5,
