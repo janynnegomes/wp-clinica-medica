@@ -34,6 +34,7 @@ function climed_register_medical_examination() {
 		'public'              => true,
 		'show_ui'             => true,
 		'show_in_menu'        => true,
+		'menu_icon' 		  => 'dashicons-category',
 		'show_in_nav_menus'   => true,
 		'show_in_admin_bar'   => true,
 		'menu_position'       => 6,
