@@ -1,0 +1,77 @@
+section.gallery{
+		background-color: #f4f3ea;
+		max-width: 600px;
+			}
+	#thumb-navigation {
+			height: 50px;
+
+		}	
+
+
+	#thumb-navigation a.arrow{  background-color: #dd3f6c;
+								height: 46px;
+								width: 30px;
+								padding: 2px;
+								vertical-align: middle;
+								color: #FFFFFF;
+								text-decoration: none;}	
+
+	#thumb-navigation a.previows-arrow
+	{
+		float: left;
+		position: relative;
+	}
+
+	#thumb-navigation a.next-arrow
+	{
+		float: right;
+		position: relative;
+	}
+										
+	#thumb-navigation ul  { position: relative;
+							float: left;
+							padding: 0 3px 0 3px;
+							margin: 0;
+							height: 50px;
+							width: auto;
+							overflow: hidden;
+							max-width: 400px;}	
+
+	#thumb-navigation ul li {display: inline-block; height: 54px;}			
+	#thumb-navigation ul li .thumb-link {background-color: white;
+										height: 50px;
+										position: relative;
+										width: 60px;
+										float: left;
+										top: -50px;
+										opacity: 0.3;}
+	#thumb-navigation ul li .thumb-link:hover {background-color: transparent;}
+
+	#thumb-navigation ul li article {padding: 0; width: 60px; height:50px; overflow: hidden;}
+
+	#thumb-navigation ul li article img {width: 60px; height:60px; overflow: hidden;}
+
+	.listImage 
+	{
+		padding-top: 4px;
+		padding-bottom: 10px;
+
+	}
+	.listImage .clipp-imageview
+	{
+		width: 100%;
+		height: auto;
+		overflow: hidden;
+	}
+	.listImage #thumb-description
+	{
+		min-height: 100px;
+		margin: 10px;
+		overflow: hidden;
+		font-family: arial;
+		font-size: 14px;
+		text-align: justify;
+	}
+	#gallery-title{
+		font-size: 16px;
+		font-weight: bold;}
