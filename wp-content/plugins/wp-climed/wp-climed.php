@@ -13,8 +13,14 @@ Version: 0.1
 Author URI: http://fb.com/DiarioDeUmaProgramadorA
 */
 
-require_once( plugin_dir_path( __FILE__ ) .'/settings/climed.adminbar.php');
+//require_once( plugin_dir_path( __FILE__ ) .'/settings/climed.adminbar.php');
+if(!defined('PLUGIN_PATH'))
+{ 
+	define('PLUGIN_PATH',  plugin_dir_path( __FILE__ ) );	
+}
 
-require_once( plugin_dir_path( __FILE__ ) .'/post_types/climed.costumer.php');
+
+require_once(PLUGIN_PATH.'/post_types/costumer.php');
+require_once(PLUGIN_PATH.'/post_types/medical_examinations.php');
 
 ?>

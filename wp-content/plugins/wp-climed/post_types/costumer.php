@@ -19,14 +19,16 @@ function climed_register_customer() {
 		'not_found'           => __( 'Not found', 'climed' ),
 		'not_found_in_trash'  => __( 'Not found in Trash', 'climed' ),
 	);
+
 	$rewrite = array(
 		'slug'                => 'customers',
 		'with_front'          => true,
 		'pages'               => true,
 		'feeds'               => true,
 	);
+
 	$args = array(
-		'label'               => __( 'climed_customer', 'climed' ),
+		'label'               => __( 'Customers', 'climed' ),
 		'description'         => __( 'People wich receives care', 'climed' ),
 		'labels'              => $labels,
 		'supports'            => array( 'title', 'editor', 'thumbnail', ),
@@ -44,11 +46,11 @@ function climed_register_customer() {
 		'rewrite'             => $rewrite,
 		'capability_type'     => 'post',
 	);
-	register_post_type( 'climed_customer', $args );
+
+	register_post_type( 'cm_customers', $args );
 
 }
 
 // Hook into the 'init' action
 add_action( 'init', 'climed_register_customer', 0 );
-
 }?>
