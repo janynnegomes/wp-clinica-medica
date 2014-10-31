@@ -22,5 +22,6 @@ if(!defined('PLUGIN_PATH'))
 
 require_once(PLUGIN_PATH.'/post_types/costumer.php');
 require_once(PLUGIN_PATH.'/post_types/medical_examinations.php');
+require_once(PLUGIN_PATH.'/post_types/member_companies.php');
 
 ?>
