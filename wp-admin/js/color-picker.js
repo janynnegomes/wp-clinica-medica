@@ -15,7 +15,9 @@
 			change: false,
 			clear: false,
 			hide: true,
-			palettes: true
+			palettes: true,
+			width: 255,
+			mode: 'hsv'
 		},
 		_create: function() {
 			// bail early for unsupported Iris.
@@ -50,9 +52,9 @@
 
 			el.iris( {
 				target: self.pickerContainer,
-				hide: true,
-				width: 255,
-				mode: 'hsv',
+				hide: self.options.hide,
+				width: self.options.width,
+				mode: self.options.mode,
 				palettes: self.options.palettes,
 				change: function( event, ui ) {
 					self.toggler.css( { backgroundColor: ui.color.toString() } );
@@ -122,12 +124,14 @@
 		open: function() {
 			this.element.show().iris( 'toggle' ).focus();
 			this.button.removeClass( 'hidden' );
+			this.wrap.addClass( 'wp-picker-active' );
 			this.toggler.addClass( 'wp-picker-open' );
 			$( 'body' ).trigger( 'click.wpcolorpicker' ).on( 'click.wpcolorpicker', this.close );
 		},
 		close: function() {
 			this.element.hide().iris( 'toggle' );
 			this.button.addClass( 'hidden' );
+			this.wrap.removeClass( 'wp-picker-active' );
 			this.toggler.removeClass( 'wp-picker-open' );
 			$( 'body' ).off( 'click.wpcolorpicker', this.close );
 		},

@@ -1,8 +1,8 @@
 /**
  * plugin.js
  *
- * Copyright, Moxiecode Systems AB
  * Released under LGPL License.
+ * Copyright (c) 1999-2015 Ephox Corp. All rights reserved
  *
  * License: http://www.tinymce.com/license
  * Contributing: http://www.tinymce.com/contributing
@@ -35,12 +35,8 @@ tinymce.PluginManager.add('tabfocus', function(editor) {
 					e.style.visibility != "hidden" && canSelectRecursive(e.parentNode));
 			}
 
-			function canSelectInOldIe(el) {
-				return el.tabIndex || el.nodeName == "INPUT" || el.nodeName == "TEXTAREA";
-			}
-
 			function canSelect(el) {
-				return ((!canSelectInOldIe(el))) && el.getAttribute("tabindex") != '-1' && canSelectRecursive(el);
+				return /INPUT|TEXTAREA|BUTTON/.test(el.tagName) && tinymce.get(e.id) && el.tabIndex != -1 && canSelectRecursive(el);
 			}
 
 			each(el, function(e, i) {
@@ -115,7 +111,6 @@ tinymce.PluginManager.add('tabfocus', function(editor) {
 
 		editor.on('keyup', tabCancel);
 
-		// Add later so other plugins can preventDefault()
 		if (tinymce.Env.gecko) {
 			editor.on('keypress keydown', tabHandler);
 		} else {

@@ -15,8 +15,13 @@
  * @uses WP_Image_Editor Extends class
  */
 class WP_Image_Editor_GD extends WP_Image_Editor {
-
-	protected $image = false; // GD Resource
+	/**
+	 * GD Resource.
+	 *
+	 * @access protected
+	 * @var resource
+	 */
+	protected $image;
 
 	public function __destruct() {
 		if ( $this->image ) {
@@ -29,9 +34,12 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * Checks to see if current environment supports GD.
 	 *
 	 * @since 3.5.0
+	 *
+	 * @static
 	 * @access public
 	 *
-	 * @return boolean
+	 * @param array $args
+	 * @return bool
 	 */
 	public static function test( $args = array() ) {
 		if ( ! extension_loaded('gd') || ! function_exists('gd_info') )
@@ -52,10 +60,12 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * Checks to see if editor supports the mime-type specified.
 	 *
 	 * @since 3.5.0
+	 *
+	 * @static
 	 * @access public
 	 *
 	 * @param string $mime_type
-	 * @return boolean
+	 * @return bool
 	 */
 	public static function supports_mime_type( $mime_type ) {
 		$image_types = imagetypes();
@@ -77,7 +87,7 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access protected
 	 *
-	 * @return boolean|WP_Error True if loaded successfully; WP_Error on failure.
+	 * @return bool|WP_Error True if loaded successfully; WP_Error on failure.
 	 */
 	public function load() {
 		if ( $this->image )
@@ -114,7 +124,7 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 		$this->update_size( $size[0], $size[1] );
 		$this->mime_type = $size['mime'];
 
-		return true;
+		return $this->set_quality();
 	}
 
 	/**
@@ -125,6 +135,7 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 *
 	 * @param int $width
 	 * @param int $height
+	 * @return true
 	 */
 	protected function update_size( $width = false, $height = false ) {
 		if ( ! $width )
@@ -149,8 +160,8 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 *
 	 * @param  int|null $max_w Image width.
 	 * @param  int|null $max_h Image height.
-	 * @param  boolean  $crop
-	 * @return boolean|WP_Error
+	 * @param  bool     $crop
+	 * @return true|WP_Error
 	 */
 	public function resize( $max_w, $max_h, $crop = false ) {
 		if ( ( $this->size['width'] == $max_w ) && ( $this->size['height'] == $max_h ) )
@@ -169,6 +180,13 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 		return new WP_Error( 'image_resize_error', __('Image resize failed.'), $this->file );
 	}
 
+	/**
+	 *
+	 * @param int $max_w
+	 * @param int $max_h
+	 * @param bool|array $crop
+	 * @return resource|WP_Error
+	 */
 	protected function _resize( $max_w, $max_h, $crop = false ) {
 		$dims = image_resize_dimensions( $this->size['width'], $this->size['height'], $max_w, $max_h, $crop );
 		if ( ! $dims ) {
@@ -194,16 +212,18 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @access public
 	 *
 	 * @param array $sizes {
-	 *     An array of image size arrays. Default sizes are 'small', 'medium', 'large'.
+	 *     An array of image size arrays. Default sizes are 'small', 'medium', 'medium_large', 'large'.
 	 *
 	 *     Either a height or width must be provided.
 	 *     If one of the two is set to null, the resize will
 	 *     maintain aspect ratio according to the provided dimension.
 	 *
 	 *     @type array $size {
-	 *         @type int  ['width']  Optional. Image width.
-	 *         @type int  ['height'] Optional. Image height.
-	 *         @type bool ['crop']   Optional. Whether to crop the image. Default false.
+	 *         Array of height, width values, and whether to crop.
+	 *
+	 *         @type int  $width  Image width. Optional if `$height` is specified.
+	 *         @type int  $height Image height. Optional if `$width` is specified.
+	 *         @type bool $crop   Optional. Whether to crop the image. Default false.
 	 *     }
 	 * }
 	 * @return array An array of resized images' metadata by size.
@@ -229,8 +249,9 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 			}
 
 			$image = $this->_resize( $size_data['width'], $size_data['height'], $size_data['crop'] );
+			$duplicate = ( ( $orig_size['width'] == $size_data['width'] ) && ( $orig_size['height'] == $size_data['height'] ) );
 
-			if( ! is_wp_error( $image ) ) {
+			if ( ! is_wp_error( $image ) && ! $duplicate ) {
 				$resized = $this->_save( $image );
 
 				imagedestroy( $image );
@@ -253,15 +274,14 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access public
 	 *
-	 * @param string|int $src The source file or Attachment ID.
-	 * @param int $src_x The start x position to crop from.
-	 * @param int $src_y The start y position to crop from.
-	 * @param int $src_w The width to crop.
-	 * @param int $src_h The height to crop.
-	 * @param int $dst_w Optional. The destination width.
-	 * @param int $dst_h Optional. The destination height.
-	 * @param boolean $src_abs Optional. If the source crop points are absolute.
-	 * @return boolean|WP_Error
+	 * @param int  $src_x   The start x position to crop from.
+	 * @param int  $src_y   The start y position to crop from.
+	 * @param int  $src_w   The width to crop.
+	 * @param int  $src_h   The height to crop.
+	 * @param int  $dst_w   Optional. The destination width.
+	 * @param int  $dst_h   Optional. The destination height.
+	 * @param bool $src_abs Optional. If the source crop points are absolute.
+	 * @return bool|WP_Error
 	 */
 	public function crop( $src_x, $src_y, $src_w, $src_h, $dst_w = null, $dst_h = null, $src_abs = false ) {
 		// If destination width/height isn't specified, use same as
@@ -301,13 +321,16 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @access public
 	 *
 	 * @param float $angle
-	 * @return boolean|WP_Error
+	 * @return true|WP_Error
 	 */
 	public function rotate( $angle ) {
 		if ( function_exists('imagerotate') ) {
-			$rotated = imagerotate( $this->image, $angle, 0 );
+			$transparency = imagecolorallocatealpha( $this->image, 255, 255, 255, 127 );
+			$rotated = imagerotate( $this->image, $angle, $transparency );
 
 			if ( is_resource( $rotated ) ) {
+				imagealphablending( $rotated, true );
+				imagesavealpha( $rotated, true );
 				imagedestroy( $this->image );
 				$this->image = $rotated;
 				$this->update_size();
@@ -323,9 +346,9 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access public
 	 *
-	 * @param boolean $horz Flip along Horizontal Axis
-	 * @param boolean $vert Flip along Vertical Axis
-	 * @returns boolean|WP_Error
+	 * @param bool $horz Flip along Horizontal Axis
+	 * @param bool $vert Flip along Vertical Axis
+	 * @return true|WP_Error
 	 */
 	public function flip( $horz, $vert ) {
 		$w = $this->size['width'];
@@ -353,8 +376,8 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @since 3.5.0
 	 * @access public
 	 *
-	 * @param string $destfilename
-	 * @param string $mime_type
+	 * @param string|null $filename
+	 * @param string|null $mime_type
 	 * @return array|WP_Error {'path'=>string, 'file'=>string, 'width'=>int, 'height'=>int, 'mime-type'=>string}
 	 */
 	public function save( $filename = null, $mime_type = null ) {
@@ -368,6 +391,12 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 		return $saved;
 	}
 
+	/**
+	 * @param resource $image
+	 * @param string|null $filename
+	 * @param string|null $mime_type
+	 * @return WP_Error|array
+	 */
 	protected function _save( $image, $filename = null, $mime_type = null ) {
 		list( $filename, $extension, $mime_type ) = $this->get_output_format( $filename, $mime_type );
 
@@ -422,6 +451,7 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @access public
 	 *
 	 * @param string $mime_type
+	 * @return bool
 	 */
 	public function stream( $mime_type = null ) {
 		list( $filename, $extension, $mime_type ) = $this->get_output_format( null, $mime_type );
@@ -448,7 +478,7 @@ class WP_Image_Editor_GD extends WP_Image_Editor {
 	 * @param string|stream $filename
 	 * @param callable $function
 	 * @param array $arguments
-	 * @return boolean
+	 * @return bool
 	 */
 	protected function make_image( $filename, $function, $arguments ) {
 		if ( wp_is_stream( $filename ) )

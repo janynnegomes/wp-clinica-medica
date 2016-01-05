@@ -161,6 +161,7 @@ function twentyfourteen_category_transient_flusher() {
 add_action( 'edit_category', 'twentyfourteen_category_transient_flusher' );
 add_action( 'save_post',     'twentyfourteen_category_transient_flusher' );
 
+if ( ! function_exists( 'twentyfourteen_post_thumbnail' ) ) :
 /**
  * Display an optional post thumbnail.
  *
@@ -168,6 +169,7 @@ add_action( 'save_post',     'twentyfourteen_category_transient_flusher' );
  * views, or a div element when on single views.
  *
  * @since Twenty Fourteen 1.0
+ * @since Twenty Fourteen 1.4 Was made 'pluggable', or overridable.
  */
 function twentyfourteen_post_thumbnail() {
 	if ( post_password_required() || is_attachment() || ! has_post_thumbnail() ) {
@@ -189,15 +191,37 @@ function twentyfourteen_post_thumbnail() {
 
 	<?php else : ?>
 
-	<a class="post-thumbnail" href="<?php the_permalink(); ?>">
+	<a class="post-thumbnail" href="<?php the_permalink(); ?>" aria-hidden="true">
 	<?php
 		if ( ( ! is_active_sidebar( 'sidebar-2' ) || is_page_template( 'page-templates/full-width.php' ) ) ) {
 			the_post_thumbnail( 'twentyfourteen-full-width' );
 		} else {
-			the_post_thumbnail();
+			the_post_thumbnail( 'post-thumbnail', array( 'alt' => get_the_title() ) );
 		}
 	?>
 	</a>
 
 	<?php endif; // End is_singular()
 }
+endif;
+
+if ( ! function_exists( 'twentyfourteen_excerpt_more' ) && ! is_admin() ) :
+/**
+ * Replaces "[...]" (appended to automatically generated excerpts) with ...
+ * and a Continue reading link.
+ *
+ * @since Twenty Fourteen 1.3
+ *
+ * @param string $more Default Read More excerpt link.
+ * @return string Filtered Read More excerpt link.
+ */
+function twentyfourteen_excerpt_more( $more ) {
+	$link = sprintf( '<a href="%1$s" class="more-link">%2$s</a>',
+		esc_url( get_permalink( get_the_ID() ) ),
+			/* translators: %s: Name of current post */
+			sprintf( __( 'Continue reading %s <span class="meta-nav">&rarr;</span>', 'twentyfourteen' ), '<span class="screen-reader-text">' . get_the_title( get_the_ID() ) . '</span>' )
+		);
+	return ' &hellip; ' . $link;
+}
+add_filter( 'excerpt_more', 'twentyfourteen_excerpt_more' );
+endif;

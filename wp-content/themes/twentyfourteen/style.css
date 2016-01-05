@@ -1,10 +1,10 @@
 /*
 Theme Name: Twenty Fourteen
-Theme URI: http://wordpress.org/themes/twentyfourteen
+Theme URI: https://wordpress.org/themes/twentyfourteen/
 Author: the WordPress team
-Author URI: http://wordpress.org/
+Author URI: https://wordpress.org/
 Description: In 2014, our default theme lets you create a responsive magazine website with a sleek, modern design. Feature your favorite homepage content in either a grid or a slider. Use the three widget areas to customize your website, and change your content's layout with a full-width page template and a contributor page to show off your authors. Creating a magazine website with WordPress has never been easier.
-Version: 1.2
+Version: 1.6
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Tags: black, green, white, light, dark, two-columns, three-columns, left-sidebar, right-sidebar, fixed-layout, responsive-layout, custom-background, custom-header, custom-menu, editor-style, featured-images, flexible-header, full-width-template, microformats, post-formats, rtl-language-support, sticky-post, theme-options, translation-ready, accessibility-ready
@@ -53,10 +53,7 @@ Use it to make something cool, have fun, and share what you've learned with othe
  * 1.0 Reset
  *
  * Resetting and rebuilding styles have been helped along thanks to the fine
- * work of Eric Meyer http://meyerweb.com/eric/tools/css/reset/index.html
- * along with Nicolas Gallagher and Jonathan Neal
- * http://necolas.github.com/normalize.css/ and Blueprint
- * http://www.blueprintcss.org/
+ * work of Eric Meyer, Nicolas Gallagher, Jonathan Neal, and Blueprint.
  *
  * -----------------------------------------------------------------------------
  */
@@ -459,7 +456,7 @@ hr {
 }
 
 /* Support a widely-adopted but non-standard selector for text selection styles
- * to achieve a better experience. See http://core.trac.wordpress.org/ticket/25898.
+ * to achieve a better experience. See https://core.trac.wordpress.org/ticket/25898.
  */
 ::selection {
 	background: #24890d;
@@ -719,7 +716,10 @@ div.wp-caption.alignright .wp-caption-text {
 
 .screen-reader-text {
 	clip: rect(1px, 1px, 1px, 1px);
-	position: absolute;
+	overflow: hidden;
+	position: absolute !important;
+	height: 1px;
+	width: 1px;
 }
 
 .screen-reader-text:focus {
@@ -1334,6 +1334,10 @@ a.post-thumbnail:hover {
 
 .entry-content .edit-link a:hover {
 	color: #41a62a;
+}
+
+.entry-content .more-link {
+	white-space: nowrap;
 }
 
 /* Mediaelements */
@@ -3073,7 +3077,7 @@ a.post-thumbnail:hover {
 /* Does the same thing as <meta name="viewport" content="width=device-width">,
  * but in the future W3C standard way. -ms- prefix is required for IE10+ to
  * render responsive styling in Windows 8 "snapped" views; IE10+ does not honor
- * the meta tag. See http://core.trac.wordpress.org/ticket/25888.
+ * the meta tag. See https://core.trac.wordpress.org/ticket/25888.
  */
 @-ms-viewport {
 	width: device-width;

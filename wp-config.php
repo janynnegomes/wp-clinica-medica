@@ -16,13 +16,13 @@
 
 // ** MySQL settings - You can get this info from your web host ** //
 /** The name of the database for WordPress */
-define('DB_NAME', 'wp-clinica-medica');
+define('DB_NAME', 'wpclinicamedica');
 
 /** MySQL database username */
-define('DB_USER', 'root');
+define('DB_USER', 'wpclimed');
 
 /** MySQL database password */
-define('DB_PASSWORD', '');
+define('DB_PASSWORD', 'A8tyGCjJXENtTaDD');
 
 /** MySQL hostname */
 define('DB_HOST', 'localhost');
@@ -42,14 +42,14 @@ define('DB_COLLATE', '');
  *
  * @since 2.6.0
  */
-define('AUTH_KEY',         'E+9@?Ab!l(8aC#U4,}s7_(w!4#1>XWh@jcGAClJ%%HqEa+^i3zLNMur*4(EQ7?P8');
-define('SECURE_AUTH_KEY',  'zTVwm6e:CHWao+ fNRwzT~ml$,H?PbCB-b+C}|HYz_bjpv(*mBb1io97+Av+]>03');
-define('LOGGED_IN_KEY',    'yFKIYrp+obJoq)5X(Zs]F-#|dK1 -3o=T9.z% c4qtqj[IET,Q>~tw4@E?y%Rw&7');
-define('NONCE_KEY',        '<YM?^>om(c@*(b v[t[iQ<SmQmp<~6^|8tKTi;Ul;5@]%sh!fSCk@L:ycijC#9}2');
-define('AUTH_SALT',        '#C =$VrAAU_id*X[*W*#O#7J~I6+bB[7TI@z:yzH3/9kG[-+)~.-UTv,M_tG0eF.');
-define('SECURE_AUTH_SALT', '))`>s!V2)N;I|C2GQ{` hs4K/Rsl0hd&4Is[D!{RhBcn/oLr<u5-){7G?X07>c[L');
-define('LOGGED_IN_SALT',   ';eohD]^# zba4nU1c,OHC{FaS6kM@abhW+1j2+(D~kTh#Ls!;aZBJBO&Zg#|rR;d');
-define('NONCE_SALT',       'Lm9`:{|XMg|Ne5K<|E97[EPE/fm:B3<1#wnQDXi C?FquJ`UWB~mW;cg$KA*cZYa');
+define('AUTH_KEY',         '?e}F[5k~Y|kw&F@j=h}^V7mLIUnV)UQ>*c*zu`J/dpRBxcY%U c>u|^{`@P8dwx`');
+define('SECURE_AUTH_KEY',  '5$=|N+N;tzkTX``#:0qjb.PC7L<E{$|(ohZ{+ux|p~l`(G){i!8g?Ad-:U:7X[Pr');
+define('LOGGED_IN_KEY',    'j|h3wm*GH1%hUwYuz7iF)ZxG82SOL/CDIQwPV/+But^V}lYxD5-K*j8CI*Ww~)jJ');
+define('NONCE_KEY',        'zNk=H<d~fP{ ivpe~!tA3l$fELGf-Ad)Lx#P.dIp>a7:Va-6#u[5Rj4b@Qi*|&vj');
+define('AUTH_SALT',        't(+X+V6=du1b.g-Y[sh?1U.~#2>seEdNh&?<WF+ hXIM6Xf66?jK+wRJ;Ez7-9F=');
+define('SECURE_AUTH_SALT', '#Dg-_I9lW-j|WgHD3|slZS^y2neq^x]A0-l-{d(F_+#fn.|V|ETdgQj-+EdRDs3S');
+define('LOGGED_IN_SALT',   'xw~9@,WzRFI;6 &m=u%7N<A5nCSY,g/unJtk;.S?o<.q +zB|0t+Vqw~>ly.V#/@');
+define('NONCE_SALT',       '}%O|f4elF|x62~~~.^H2Jdv`76w}-w3>YkAbtnY=Nz~3 N#b[>ML|PGV^YSsg<|=');
 
 /**#@-*/
 
@@ -78,3 +78,4 @@ if ( !defined('ABSPATH') )
 
 /** Sets up WordPress vars and included files. */
 require_once(ABSPATH . 'wp-settings.php');
+

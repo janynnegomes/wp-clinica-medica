@@ -34,8 +34,8 @@
  *                                      or 0|false. Default 1|true.
  *     @type int|bool $show_name        Whether to show link name if available. Accepts 1|true or
  *                                      0|false. Default 0|false.
- *     @type string   $before           The HTML or text to prepend to each bookmark. Default '<li>'.
- *     @type string   $after            The HTML or text to append to each bookmark. Default '</li>'.
+ *     @type string   $before           The HTML or text to prepend to each bookmark. Default `<li>`.
+ *     @type string   $after            The HTML or text to append to each bookmark. Default `</li>`.
  *     @type string   $link_before      The HTML or text to prepend to each bookmark inside the anchor
  *                                      tags. Default empty.
  *     @type string   $link_after       The HTML or text to append to each bookmark inside the anchor
@@ -195,7 +195,7 @@ function _walk_bookmarks( $bookmarks, $args = '' ) {
  *                                      $categorize is true. Accepts 'ASC' (ascending) or 'DESC' (descending).
  *                                      Default 'ASC'.
  * }
- * @return string|null Will only return if echo option is set to not echo. Default is not return anything.
+ * @return string|void Will only return if echo option is set to not echo. Default is not return anything.
  */
 function wp_list_bookmarks( $args = '' ) {
 	$defaults = array(
@@ -213,6 +213,12 @@ function wp_list_bookmarks( $args = '' ) {
 	$r = wp_parse_args( $args, $defaults );
 
 	$output = '';
+
+	if ( ! is_array( $r['class'] ) ) {
+		$r['class'] = explode( ' ', $r['class'] );
+	}
+ 	$r['class'] = array_map( 'sanitize_html_class', $r['class'] );
+ 	$r['class'] = trim( join( ' ', $r['class'] ) );
 
 	if ( $r['categorize'] ) {
 		$cats = get_terms( 'link_category', array(

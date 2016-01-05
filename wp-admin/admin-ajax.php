@@ -5,7 +5,7 @@
  * @package WordPress
  * @subpackage Administration
  *
- * @link http://codex.wordpress.org/AJAX_in_Plugins
+ * @link https://codex.wordpress.org/AJAX_in_Plugins
  */
 
 /**
@@ -56,13 +56,17 @@ $core_actions_post = array(
 	'hidden-columns', 'update-welcome-panel', 'menu-get-metabox', 'wp-link-ajax',
 	'menu-locations-save', 'menu-quick-search', 'meta-box-order', 'get-permalink',
 	'sample-permalink', 'inline-save', 'inline-save-tax', 'find_posts', 'widgets-order',
-	'save-widget', 'set-post-thumbnail', 'date_format', 'time_format', 'wp-fullscreen-save-post',
+	'save-widget', 'delete-inactive-widgets', 'set-post-thumbnail', 'date_format', 'time_format',
 	'wp-remove-post-lock', 'dismiss-wp-pointer', 'upload-attachment', 'get-attachment',
 	'query-attachments', 'save-attachment', 'save-attachment-compat', 'send-link-to-editor',
 	'send-attachment-to-editor', 'save-attachment-order', 'heartbeat', 'get-revision-diffs',
 	'save-user-color-scheme', 'update-widget', 'query-themes', 'parse-embed', 'set-attachment-thumbnail',
-	'parse-media-shortcode'
+	'parse-media-shortcode', 'destroy-sessions', 'install-plugin', 'update-plugin', 'press-this-save-post',
+	'press-this-add-category', 'crop-image', 'generate-password', 'save-wporg-username',
 );
+
+// Deprecated
+$core_actions_post[] = 'wp-fullscreen-save-post';
 
 // Register core Ajax calls.
 if ( ! empty( $_GET['action'] ) && in_array( $_GET['action'], $core_actions_get ) )
@@ -77,7 +81,7 @@ if ( is_user_logged_in() ) {
 	/**
 	 * Fires authenticated AJAX actions for logged-in users.
 	 *
-	 * The dynamic portion of the hook name, $_REQUEST['action'],
+	 * The dynamic portion of the hook name, `$_REQUEST['action']`,
 	 * refers to the name of the AJAX action callback being fired.
 	 *
 	 * @since 2.1.0
@@ -87,7 +91,7 @@ if ( is_user_logged_in() ) {
 	/**
 	 * Fires non-authenticated AJAX actions for logged-out users.
 	 *
-	 * The dynamic portion of the hook name, $_REQUEST['action'],
+	 * The dynamic portion of the hook name, `$_REQUEST['action']`,
 	 * refers to the name of the AJAX action callback being fired.
 	 *
 	 * @since 2.8.0

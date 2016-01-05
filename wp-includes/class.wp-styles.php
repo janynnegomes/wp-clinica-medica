@@ -39,6 +39,10 @@ class WP_Styles extends WP_Dependencies {
 		do_action_ref_array( 'wp_default_styles', array(&$this) );
 	}
 
+	/**
+	 * @param string $handle
+	 * @return bool
+	 */
 	public function do_item( $handle ) {
 		if ( !parent::do_item($handle) )
 			return false;
@@ -80,11 +84,13 @@ class WP_Styles extends WP_Dependencies {
 		 * Filter the HTML link tag of an enqueued style.
 		 *
 		 * @since 2.6.0
+		 * @since 4.3.0 Introduced the `$href` parameter.
 		 *
-		 * @param string         The link tag for the enqueued style.
+		 * @param string $html   The link tag for the enqueued style.
 		 * @param string $handle The style's registered handle.
+		 * @param string $href   The stylesheet's source URL.
 		 */
-		$tag = apply_filters( 'style_loader_tag', "<link rel='$rel' id='$handle-css' $title href='$href' type='text/css' media='$media' />\n", $handle );
+		$tag = apply_filters( 'style_loader_tag', "<link rel='$rel' id='$handle-css' $title href='$href' type='text/css' media='$media' />\n", $handle, $href );
 		if ( 'rtl' === $this->text_direction && isset($obj->extra['rtl']) && $obj->extra['rtl'] ) {
 			if ( is_bool( $obj->extra['rtl'] ) || 'replace' === $obj->extra['rtl'] ) {
 				$suffix = isset( $obj->extra['suffix'] ) ? $obj->extra['suffix'] : '';
@@ -94,7 +100,7 @@ class WP_Styles extends WP_Dependencies {
 			}
 
 			/** This filter is documented in wp-includes/class.wp-styles.php */
-			$rtl_tag = apply_filters( 'style_loader_tag', "<link rel='$rel' id='$handle-rtl-css' $title href='$rtl_href' type='text/css' media='$media' />\n", $handle );
+			$rtl_tag = apply_filters( 'style_loader_tag', "<link rel='$rel' id='$handle-rtl-css' $title href='$rtl_href' type='text/css' media='$media' />\n", $handle, $rtl_href );
 
 			if ( $obj->extra['rtl'] === 'replace' ) {
 				$tag = $rtl_tag;
@@ -103,53 +109,77 @@ class WP_Styles extends WP_Dependencies {
 			}
 		}
 
-		if ( isset($obj->extra['conditional']) && $obj->extra['conditional'] ) {
-			$tag = "<!--[if {$obj->extra['conditional']}]>\n" . $tag . "<![endif]-->\n";
+		$conditional_pre = $conditional_post = '';
+		if ( isset( $obj->extra['conditional'] ) && $obj->extra['conditional'] ) {
+			$conditional_pre  = "<!--[if {$obj->extra['conditional']}]>\n";
+			$conditional_post = "<![endif]-->\n";
 		}
 
 		if ( $this->do_concat ) {
+			$this->print_html .= $conditional_pre;
 			$this->print_html .= $tag;
-			if ( $inline_style = $this->print_inline_style( $handle, false ) )
-				$this->print_html .= sprintf( "<style type='text/css'>\n%s\n</style>\n", $inline_style );
+			if ( $inline_style = $this->print_inline_style( $handle, false ) ) {
+				$this->print_html .= sprintf( "<style id='%s-inline-css' type='text/css'>\n%s\n</style>\n", esc_attr( $handle ), $inline_style );
+			}
+			$this->print_html .= $conditional_post;
 		} else {
+			echo $conditional_pre;
 			echo $tag;
 			$this->print_inline_style( $handle );
+			echo $conditional_post;
 		}
 
 		return true;
 	}
 
+	/**
+	 * @param string $handle
+	 * @param string $code
+	 */
 	public function add_inline_style( $handle, $code ) {
-		if ( !$code )
+		if ( ! $code ) {
 			return false;
+		}
 
 		$after = $this->get_data( $handle, 'after' );
-		if ( !$after )
+		if ( ! $after ) {
 			$after = array();
+		}
 
 		$after[] = $code;
 
 		return $this->add_data( $handle, 'after', $after );
 	}
 
+	/**
+	 * @param string $handle
+	 * @param bool $echo
+	 * @return bool
+	 */
 	public function print_inline_style( $handle, $echo = true ) {
 		$output = $this->get_data( $handle, 'after' );
 
-		if ( empty( $output ) )
+		if ( empty( $output ) ) {
 			return false;
+		}
 
 		$output = implode( "\n", $output );
 
-		if ( !$echo )
+		if ( ! $echo ) {
 			return $output;
+		}
 
-		echo "<style type='text/css'>\n";
-		echo "$output\n";
-		echo "</style>\n";
+		printf( "<style id='%s-inline-css' type='text/css'>\n%s\n</style>\n", esc_attr( $handle ), $output );
 
 		return true;
 	}
 
+	/**
+	 * @param mixed $handles
+	 * @param bool $recursion
+	 * @param mixed $group
+	 * @return bool
+	 */
 	public function all_deps( $handles, $recursion = false, $group = false ) {
 		$r = parent::all_deps( $handles, $recursion );
 		if ( !$recursion ) {
@@ -165,6 +195,12 @@ class WP_Styles extends WP_Dependencies {
 		return $r;
 	}
 
+	/**
+	 * @param string $src
+	 * @param string $ver
+	 * @param string $handle
+	 * @return string
+	 */
 	public function _css_href( $src, $ver, $handle ) {
 		if ( !is_bool($src) && !preg_match('|^(https?:)?//|', $src) && ! ( $this->content_url && 0 === strpos($src, $this->content_url) ) ) {
 			$src = $this->base_url . $src;
@@ -185,6 +221,10 @@ class WP_Styles extends WP_Dependencies {
 		return esc_url( $src );
 	}
 
+	/**
+	 * @param string $src
+	 * @return bool
+	 */
 	public function in_default_dir($src) {
 		if ( ! $this->default_dirs )
 			return true;
@@ -196,11 +236,17 @@ class WP_Styles extends WP_Dependencies {
 		return false;
 	}
 
+	/**
+	 * @return array
+	 */
 	public function do_footer_items() { // HTML 5 allows styles in the body, grab late enqueued items and output them in the footer.
 		$this->do_items(false, 1);
 		return $this->done;
 	}
 
+	/**
+	 * @access public
+	 */
 	public function reset() {
 		$this->do_concat = false;
 		$this->concat = '';

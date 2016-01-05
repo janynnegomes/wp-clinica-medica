@@ -1,10 +1,10 @@
 <?php
 /**
- * A File upgrader class for WordPress.
+ * Upgrade API: WP_Upgrader, Plugin_Upgrader, Theme_Upgrader, Language_Pack_Upgrader,
+ * Core_Upgrader, File_Upload_Upgrader, and WP_Automatic_Updater classes
  *
- * This set of classes are designed to be used to upgrade/install a local set of files on the filesystem via the Filesystem Abstraction classes.
- *
- * @link http://trac.wordpress.org/ticket/7875 consolidate plugin/theme/core upgrade/install functions
+ * This set of classes are designed to be used to upgrade/install a local set of files
+ * on the filesystem via the Filesystem Abstraction classes.
  *
  * @package WordPress
  * @subpackage Upgrader
@@ -14,29 +14,115 @@
 require ABSPATH . 'wp-admin/includes/class-wp-upgrader-skins.php';
 
 /**
- * WordPress Upgrader class for Upgrading/Installing a local set of files via the Filesystem Abstraction classes from a Zip file.
+ * Core class used for upgrading/installing a local set of files via
+ * the Filesystem Abstraction classes from a Zip file.
  *
- * @package WordPress
- * @subpackage Upgrader
  * @since 2.8.0
  */
 class WP_Upgrader {
+
+	/**
+	 * The error/notification strings used to update the user on the progress.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var string $strings
+	 */
 	public $strings = array();
+
+	/**
+	 * The upgrader skin being used.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var WP_Upgrader_Skin $skin
+	 */
 	public $skin = null;
+
+	/**
+	 * The result of the installation.
+	 *
+	 * This is set by {@see WP_Upgrader::install_package()}, only when the package is installed
+	 * successfully. It will then be an array, unless a {@see WP_Error} is returned by the
+	 * {@see 'upgrader_post_install'} filter. In that case, the `WP_Error` will be assigned to
+	 * it.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @var WP_Error|array $result {
+	 *      @type string $source             The full path to the source the files were installed from.
+	 *      @type string $source_files       List of all the files in the source directory.
+	 *      @type string $destination        The full path to the install destination folder.
+	 *      @type string $destination_name   The name of the destination folder, or empty if `$destination`
+	 *                                       and `$local_destination` are the same.
+	 *      @type string $local_destination  The full local path to the destination folder. This is usually
+	 *                                       the same as `$destination`.
+	 *      @type string $remote_destination The full remote path to the destination folder
+	 *                                       (i.e., from `$wp_filesystem`).
+	 *      @type bool   $clear_destination  Whether the destination folder was cleared.
+	 * }
+	 */
 	public $result = array();
 
-	public function __construct($skin = null) {
+	/**
+	 * The total number of updates being performed.
+	 *
+	 * Set by the bulk update methods.
+	 *
+	 * @since 3.0.0
+	 * @access public
+	 * @var int $update_count
+	 */
+	public $update_count = 0;
+
+	/**
+	 * The current update if multiple updates are being performed.
+	 *
+	 * Used by the bulk update methods, and incremented for each update.
+	 *
+	 * @since 3.0.0
+	 * @access public
+	 * @var int
+	 */
+	public $update_current = 0;
+
+	/**
+	 * Construct the upgrader with a skin.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param WP_Upgrader_Skin $skin The upgrader skin to use. Default is a {@see WP_Upgrader_Skin}
+	 *                               instance.
+	 */
+	public function __construct( $skin = null ) {
 		if ( null == $skin )
 			$this->skin = new WP_Upgrader_Skin();
 		else
 			$this->skin = $skin;
 	}
 
+	/**
+	 * Initialize the upgrader.
+	 *
+	 * This will set the relationship between the skin being used and this upgrader,
+	 * and also add the generic strings to `WP_Upgrader::$strings`.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function init() {
 		$this->skin->set_upgrader($this);
 		$this->generic_strings();
 	}
 
+	/**
+	 * Add the generic strings to WP_Upgrader::$strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function generic_strings() {
 		$this->strings['bad_request'] = __('Invalid Data provided.');
 		$this->strings['fs_unavailable'] = __('Could not access filesystem.');
@@ -54,22 +140,40 @@ class WP_Upgrader {
 		$this->strings['folder_exists'] = __('Destination folder already exists.');
 		$this->strings['mkdir_failed'] = __('Could not create directory.');
 		$this->strings['incompatible_archive'] = __('The package could not be installed.');
+		$this->strings['files_not_writable'] = __( 'The update cannot be installed because we will be unable to copy some files. This is usually due to inconsistent file permissions.' );
 
 		$this->strings['maintenance_start'] = __('Enabling Maintenance mode&#8230;');
 		$this->strings['maintenance_end'] = __('Disabling Maintenance mode&#8230;');
 	}
 
-	public function fs_connect( $directories = array() ) {
+	/**
+	 * Connect to the filesystem.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param array $directories                  Optional. A list of directories. If any of these do
+	 *                                            not exist, a {@see WP_Error} object will be returned.
+	 *                                            Default empty array.
+	 * @param bool  $allow_relaxed_file_ownership Whether to allow relaxed file ownership.
+	 *                                            Default false.
+	 * @return bool|WP_Error True if able to connect, false or a {@see WP_Error} otherwise.
+	 */
+	public function fs_connect( $directories = array(), $allow_relaxed_file_ownership = false ) {
 		global $wp_filesystem;
 
-		if ( false === ($credentials = $this->skin->request_filesystem_credentials()) )
+		if ( false === ( $credentials = $this->skin->request_filesystem_credentials( false, $directories[0], $allow_relaxed_file_ownership ) ) ) {
 			return false;
+		}
 
-		if ( ! WP_Filesystem($credentials) ) {
+		if ( ! WP_Filesystem( $credentials, $directories[0], $allow_relaxed_file_ownership ) ) {
 			$error = true;
 			if ( is_object($wp_filesystem) && $wp_filesystem->errors->get_error_code() )
 				$error = $wp_filesystem->errors;
-			$this->skin->request_filesystem_credentials($error); //Failed to connect, Error and request again
+			// Failed to connect, Error and request again
+			$this->skin->request_filesystem_credentials( $error, $directories[0], $allow_relaxed_file_ownership );
 			return false;
 		}
 
@@ -106,12 +210,23 @@ class WP_Upgrader {
 		return true;
 	} //end fs_connect();
 
-	public function download_package($package) {
+	/**
+	 * Download a package.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param string $package The URI of the package. If this is the full path to an
+	 *                        existing local file, it will be returned untouched.
+	 * @return string|WP_Error The full path to the downloaded package file, or a {@see WP_Error} object.
+	 */
+	public function download_package( $package ) {
 
 		/**
 		 * Filter whether to return the package.
 		 *
 		 * @since 3.7.0
+		 * @access public
 		 *
 		 * @param bool        $reply   Whether to bail without returning the package.
 		 *                             Default false.
@@ -138,7 +253,20 @@ class WP_Upgrader {
 		return $download_file;
 	}
 
-	public function unpack_package($package, $delete_package = true) {
+	/**
+	 * Unpack a compressed package file.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param string $package        Full path to the package file.
+	 * @param bool   $delete_package Optional. Whether to delete the package file after attempting
+	 *                               to unpack it. Default true.
+	 * @return string|WP_Error The path to the unpacked contents, or a {@see WP_Error} on failure.
+	 */
+	public function unpack_package( $package, $delete_package = true ) {
 		global $wp_filesystem;
 
 		$this->skin->feedback('unpack_package');
@@ -152,8 +280,8 @@ class WP_Upgrader {
 				$wp_filesystem->delete($upgrade_folder . $file['name'], true);
 		}
 
-		//We need a working directory
-		$working_dir = $upgrade_folder . basename($package, '.zip');
+		// We need a working directory - Strip off any .tmp or .zip suffixes
+		$working_dir = $upgrade_folder . basename( basename( $package, '.tmp' ), '.zip' );
 
 		// Clean up working directory
 		if ( $wp_filesystem->is_dir($working_dir) )
@@ -177,6 +305,97 @@ class WP_Upgrader {
 		return $working_dir;
 	}
 
+	/**
+	 * Clears the directory where this item is going to be installed into.
+	 *
+	 * @since 4.3.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param string $remote_destination The location on the remote filesystem to be cleared
+	 * @return bool|WP_Error True upon success, WP_Error on failure.
+	 */
+	public function clear_destination( $remote_destination ) {
+		global $wp_filesystem;
+
+		if ( ! $wp_filesystem->exists( $remote_destination ) ) {
+			return true;
+		}
+
+		// Check all files are writable before attempting to clear the destination.
+		$unwritable_files = array();
+
+		$_files = $wp_filesystem->dirlist( $remote_destination, true, true );
+
+		// Flatten the resulting array, iterate using each as we append to the array during iteration.
+		while ( $f = each( $_files ) ) {
+			$file = $f['value'];
+			$name = $f['key'];
+
+			if ( ! isset( $file['files'] ) ) {
+				continue;
+			}
+
+			foreach ( $file['files'] as $filename => $details ) {
+				$_files[ $name . '/' . $filename ] = $details;
+			}
+		}
+
+		// Check writability.
+		foreach ( $_files as $filename => $file_details ) {
+			if ( ! $wp_filesystem->is_writable( $remote_destination . $filename ) ) {
+
+				// Attempt to alter permissions to allow writes and try again.
+				$wp_filesystem->chmod( $remote_destination . $filename, ( 'd' == $file_details['type'] ? FS_CHMOD_DIR : FS_CHMOD_FILE ) );
+				if ( ! $wp_filesystem->is_writable( $remote_destination . $filename ) ) {
+					$unwritable_files[] = $filename;
+				}
+			}
+		}
+
+		if ( ! empty( $unwritable_files ) ) {
+			return new WP_Error( 'files_not_writable', $this->strings['files_not_writable'], implode( ', ', $unwritable_files ) );
+		}
+
+		if ( ! $wp_filesystem->delete( $remote_destination, true ) ) {
+			return new WP_Error( 'remove_old_failed', $this->strings['remove_old_failed'] );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Install a package.
+	 *
+	 * Copies the contents of a package form a source directory, and installs them in
+	 * a destination directory. Optionally removes the source. It can also optionally
+	 * clear out the destination folder if it already exists.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 * @global array              $wp_theme_directories
+	 *
+	 * @param array|string $args {
+	 *     Optional. Array or string of arguments for installing a package. Default empty array.
+	 *
+	 *     @type string $source                      Required path to the package source. Default empty.
+	 *     @type string $destination                 Required path to a folder to install the package in.
+	 *                                               Default empty.
+	 *     @type bool   $clear_destination           Whether to delete any files already in the destination
+	 *                                               folder. Default false.
+	 *     @type bool   $clear_working               Whether to delete the files form the working directory
+	 *                                               after copying to the destination. Default false.
+	 *     @type bool   $abort_if_destination_exists Whether to abort the installation if
+	 *                                               the destination folder already exists. Default true.
+	 *     @type array  $hook_extra                  Extra arguments to pass to the filter hooks called by
+	 *                                               {@see WP_Upgrader::install_package()}. Default empty array.
+	 * }
+	 *
+	 * @return array|WP_Error The result (also stored in `WP_Upgrader:$result`), or a {@see WP_Error} on failure.
+	 */
 	public function install_package( $args = array() ) {
 		global $wp_filesystem, $wp_theme_directories;
 
@@ -216,6 +435,7 @@ class WP_Upgrader {
 		 * @param array         $hook_extra Extra arguments passed to hooked filters.
 		 */
 		$res = apply_filters( 'upgrader_pre_install', true, $args['hook_extra'] );
+
 		if ( is_wp_error( $res ) ) {
 			return $res;
 		}
@@ -232,7 +452,7 @@ class WP_Upgrader {
 			$source = trailingslashit( $args['source'] ) . trailingslashit( $source_files[0] );
 		} elseif ( count( $source_files ) == 0 ) {
 			return new WP_Error( 'incompatible_archive_empty', $this->strings['incompatible_archive'], $this->strings['no_files'] ); // There are no files?
-		} else { //It's only a single file, the upgrader will use the foldername of this file as the destination folder. foldername is based on zip filename.
+		} else { // It's only a single file, the upgrader will use the folder name of this file as the destination folder. Folder name is based on zip filename.
 			$source = trailingslashit( $args['source'] );
 		}
 
@@ -240,12 +460,15 @@ class WP_Upgrader {
 		 * Filter the source file location for the upgrade package.
 		 *
 		 * @since 2.8.0
+		 * @since 4.4.0 The $hook_extra parameter became available.
 		 *
 		 * @param string      $source        File source location.
-		 * @param string      $remote_source Remove file source location.
+		 * @param string      $remote_source Remote file source location.
 		 * @param WP_Upgrader $this          WP_Upgrader instance.
+		 * @param array       $hook_extra    Extra arguments passed to hooked filters.
 		 */
-		$source = apply_filters( 'upgrader_source_selection', $source, $remote_source, $this );
+		$source = apply_filters( 'upgrader_source_selection', $source, $remote_source, $this, $args['hook_extra'] );
+
 		if ( is_wp_error( $source ) ) {
 			return $source;
 		}
@@ -254,6 +477,7 @@ class WP_Upgrader {
 		if ( $source !== $remote_source ) {
 			$source_files = array_keys( $wp_filesystem->dirlist( $source ) );
 		}
+
 		/*
 		 * Protection against deleting files in any important base directories.
 		 * Theme_Upgrader & Plugin_Upgrader also trigger this, as they pass the
@@ -266,35 +490,32 @@ class WP_Upgrader {
 		if ( is_array( $wp_theme_directories ) ) {
 			$protected_directories = array_merge( $protected_directories, $wp_theme_directories );
 		}
+
 		if ( in_array( $destination, $protected_directories ) ) {
 			$remote_destination = trailingslashit( $remote_destination ) . trailingslashit( basename( $source ) );
 			$destination = trailingslashit( $destination ) . trailingslashit( basename( $source ) );
 		}
 
 		if ( $clear_destination ) {
-			//We're going to clear the destination if there's something there
+			// We're going to clear the destination if there's something there.
 			$this->skin->feedback('remove_old');
-			$removed = true;
-			if ( $wp_filesystem->exists( $remote_destination ) ) {
-				$removed = $wp_filesystem->delete( $remote_destination, true );
-			}
+
+			$removed = $this->clear_destination( $remote_destination );
 
 			/**
 			 * Filter whether the upgrader cleared the destination.
 			 *
 			 * @since 2.8.0
 			 *
-			 * @param bool   $removed            Whether the destination was cleared.
+			 * @param mixed  $removed            Whether the destination was cleared. true on success, WP_Error on failure
 			 * @param string $local_destination  The local package destination.
 			 * @param string $remote_destination The remote package destination.
 			 * @param array  $hook_extra         Extra arguments passed to hooked filters.
 			 */
 			$removed = apply_filters( 'upgrader_clear_destination', $removed, $local_destination, $remote_destination, $args['hook_extra'] );
 
-			if ( is_wp_error($removed) ) {
+			if ( is_wp_error( $removed ) ) {
 				return $removed;
-			} else if ( ! $removed ) {
-				return new WP_Error('remove_old_failed', $this->strings['remove_old_failed']);
 			}
 		} elseif ( $args['abort_if_destination_exists'] && $wp_filesystem->exists($remote_destination) ) {
 			//If we're not clearing the destination folder and something exists there already, Bail.
@@ -331,7 +552,7 @@ class WP_Upgrader {
 			$destination_name = '';
 		}
 
-		$this->result = compact('local_source', 'source', 'source_name', 'source_files', 'destination', 'destination_name', 'local_destination', 'remote_destination', 'clear_destination', 'delete_source_dir');
+		$this->result = compact( 'source', 'source_files', 'destination', 'destination_name', 'local_destination', 'remote_destination', 'clear_destination' );
 
 		/**
 		 * Filter the install response after the installation has finished.
@@ -353,6 +574,40 @@ class WP_Upgrader {
 		return $this->result;
 	}
 
+	/**
+	 * Run an upgrade/install.
+	 *
+	 * Attempts to download the package (if it is not a local file), unpack it, and
+	 * install it in the destination folder.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param array $options {
+	 *     Array or string of arguments for upgrading/installing a package.
+	 *
+	 *     @type string $package                     The full path or URI of the package to install.
+	 *                                               Default empty.
+	 *     @type string $destination                 The full path to the destination folder.
+	 *                                               Default empty.
+	 *     @type bool   $clear_destination           Whether to delete any files already in the
+	 *                                               destination folder. Default false.
+	 *     @type bool   $clear_working               Whether to delete the files form the working
+	 *                                               directory after copying to the destination.
+	 *                                               Default false.
+	 *     @type bool   $abort_if_destination_exists Whether to abort the installation if the destination
+	 *                                               folder already exists. When true, `$clear_destination`
+	 *                                               should be false. Default true.
+	 *     @type bool   $is_multi                    Whether this run is one of multiple upgrade/install
+	 *                                               actions being performed in bulk. When true, the skin
+	 *                                               {@see WP_Upgrader::header()} and {@see WP_Upgrader::footer()}
+	 *                                               aren't called. Default false.
+	 *     @type array  $hook_extra                  Extra arguments to pass to the filter hooks called by
+	 *                                               {@see WP_Upgrader::run()}.
+	 * }
+	 * @return array|false|WP_error The result from self::install_package() on success, otherwise a WP_Error,
+	 *                              or false if unable to connect to the filesystem.
+	 */
 	public function run( $options ) {
 
 		$defaults = array(
@@ -366,6 +621,25 @@ class WP_Upgrader {
 		);
 
 		$options = wp_parse_args( $options, $defaults );
+
+		/**
+		 * Filter the package options before running an update.
+		 *
+		 * @since 4.3.0
+		 *
+		 * @param array $options {
+		 *     Options used by the upgrader.
+		 *
+		 *     @type string $package                     Package for update.
+		 *     @type string $destination                 Update location.
+		 *     @type bool   $clear_destination           Clear the destination resource.
+		 *     @type bool   $clear_working               Clear the working resource.
+		 *     @type bool   $abort_if_destination_exists Abort if the Destination directory exists.
+		 *     @type bool   $is_multi                    Whether the upgrader is running multiple times.
+		 *     @type array  $hook_extra                  Extra hook arguments.
+		 * }
+		 */
+		$options = apply_filters( 'upgrader_package_options', $options );
 
 		if ( ! $options['is_multi'] ) { // call $this->header separately if running multiple times
 			$this->skin->header();
@@ -392,7 +666,10 @@ class WP_Upgrader {
 			return $res;
 		}
 
-		//Download the package (Note, This just returns the filename of the file if the package is a local file)
+		/*
+		 * Download the package (Note, This just returns the filename
+		 * of the file if the package is a local file)
+		 */
 		$download = $this->download_package( $options['package'] );
 		if ( is_wp_error($download) ) {
 			$this->skin->error($download);
@@ -405,7 +682,7 @@ class WP_Upgrader {
 
 		$delete_package = ( $download != $options['package'] ); // Do not delete a "local" file
 
-		//Unzips the file into a temporary directory
+		// Unzips the file into a temporary directory.
 		$working_dir = $this->unpack_package( $download, $delete_package );
 		if ( is_wp_error($working_dir) ) {
 			$this->skin->error($working_dir);
@@ -416,7 +693,7 @@ class WP_Upgrader {
 			return $working_dir;
 		}
 
-		//With the given options, this installs it to the destination directory.
+		// With the given options, this installs it to the destination directory.
 		$result = $this->install_package( array(
 			'source' => $working_dir,
 			'destination' => $options['destination'],
@@ -431,7 +708,7 @@ class WP_Upgrader {
 			$this->skin->error($result);
 			$this->skin->feedback('process_failed');
 		} else {
-			//Install Succeeded
+			// Install succeeded.
 			$this->skin->feedback('process_success');
 		}
 
@@ -447,7 +724,19 @@ class WP_Upgrader {
 		return $result;
 	}
 
-	public function maintenance_mode($enable = false) {
+	/**
+	 * Toggle maintenance mode for the site.
+	 *
+	 * Creates/deletes the maintenance file to enable/disable maintenance mode.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param bool $enable True to enable maintenance mode, false to disable.
+	 */
+	public function maintenance_mode( $enable = false ) {
 		global $wp_filesystem;
 		$file = $wp_filesystem->abspath() . '.maintenance';
 		if ( $enable ) {
@@ -456,7 +745,7 @@ class WP_Upgrader {
 			$maintenance_string = '<?php $upgrading = ' . time() . '; ?>';
 			$wp_filesystem->delete($file);
 			$wp_filesystem->put_contents($file, $maintenance_string, FS_CHMOD_FILE);
-		} else if ( !$enable && $wp_filesystem->exists($file) ) {
+		} elseif ( ! $enable && $wp_filesystem->exists( $file ) ) {
 			$this->skin->feedback('maintenance_end');
 			$wp_filesystem->delete($file);
 		}
@@ -465,17 +754,43 @@ class WP_Upgrader {
 }
 
 /**
- * Plugin Upgrader class for WordPress Plugins, It is designed to upgrade/install plugins from a local zip, remote zip URL, or uploaded zip file.
+ * Core class used for upgrading/installing plugins.
  *
- * @package WordPress
- * @subpackage Upgrader
+ * It is designed to upgrade/install plugins from a local zip, remote zip URL,
+ * or uploaded zip file.
+ *
  * @since 2.8.0
+ *
+ * @see WP_Upgrader
  */
 class Plugin_Upgrader extends WP_Upgrader {
 
+	/**
+	 * Plugin upgrade result.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var array|WP_Error $result
+	 *
+	 * @see WP_Upgrader::$result
+	 */
 	public $result;
+
+	/**
+	 * Whether a bulk upgrade/install is being performed.
+	 *
+	 * @since 2.9.0
+	 * @access public
+	 * @var bool $bulk
+	 */
 	public $bulk = false;
 
+	/**
+	 * Initialize the upgrade strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function upgrade_strings() {
 		$this->strings['up_to_date'] = __('The plugin is at the latest version.');
 		$this->strings['no_package'] = __('Update package not available.');
@@ -485,8 +800,15 @@ class Plugin_Upgrader extends WP_Upgrader {
 		$this->strings['remove_old_failed'] = __('Could not remove the old plugin.');
 		$this->strings['process_failed'] = __('Plugin update failed.');
 		$this->strings['process_success'] = __('Plugin updated successfully.');
+		$this->strings['process_bulk_success'] = __('Plugins updated successfully.');
 	}
 
+	/**
+	 * Initialize the install strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function install_strings() {
 		$this->strings['no_package'] = __('Install package not available.');
 		$this->strings['downloading_package'] = __('Downloading install package from <span class="code">%s</span>&#8230;');
@@ -497,6 +819,22 @@ class Plugin_Upgrader extends WP_Upgrader {
 		$this->strings['process_success'] = __('Plugin installed successfully.');
 	}
 
+	/**
+	 * Install a plugin package.
+	 *
+	 * @since 2.8.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the plugin update cache optional.
+	 * @access public
+	 *
+	 * @param string $package The full local path or URI of the package.
+	 * @param array  $args {
+	 *     Optional. Other arguments for installing a plugin package. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the plugin updates cache if successful.
+	 *                                    Default true.
+	 * }
+	 * @return bool|WP_Error True if the install was successful, false or a WP_Error otherwise.
+	 */
 	public function install( $package, $args = array() ) {
 
 		$defaults = array(
@@ -508,6 +846,8 @@ class Plugin_Upgrader extends WP_Upgrader {
 		$this->install_strings();
 
 		add_filter('upgrader_source_selection', array($this, 'check_package') );
+		// Clear cache so wp_update_plugins() knows about the new plugin.
+		add_action( 'upgrader_process_complete', 'wp_clean_plugins_cache', 9, 0 );
 
 		$this->run( array(
 			'package' => $package,
@@ -520,6 +860,7 @@ class Plugin_Upgrader extends WP_Upgrader {
 			)
 		) );
 
+		remove_action( 'upgrader_process_complete', 'wp_clean_plugins_cache', 9 );
 		remove_filter('upgrader_source_selection', array($this, 'check_package') );
 
 		if ( ! $this->result || is_wp_error($this->result) )
@@ -531,6 +872,22 @@ class Plugin_Upgrader extends WP_Upgrader {
 		return true;
 	}
 
+	/**
+	 * Upgrade a plugin.
+	 *
+	 * @since 2.8.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the plugin update cache optional.
+	 * @access public
+	 *
+	 * @param string $plugin The basename path to the main plugin file.
+	 * @param array  $args {
+	 *     Optional. Other arguments for upgrading a plugin package. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the plugin updates cache if successful.
+	 *                                    Default true.
+	 * }
+	 * @return bool|WP_Error True if the upgrade was successful, false or a {@see WP_Error} object otherwise.
+	 */
 	public function upgrade( $plugin, $args = array() ) {
 
 		$defaults = array(
@@ -582,6 +939,22 @@ class Plugin_Upgrader extends WP_Upgrader {
 		return true;
 	}
 
+	/**
+	 * Bulk upgrade several plugins at once.
+	 *
+	 * @since 2.8.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the plugin update cache optional.
+	 * @access public
+	 *
+	 * @param array $plugins Array of the basename paths of the plugins' main files.
+	 * @param array $args {
+	 *     Optional. Other arguments for upgrading several plugins at once. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the plugin updates cache if successful.
+	 *                                    Default true.
+	 * }
+	 * @return array|false An array of results indexed by plugin file, or false if unable to connect to the filesystem.
+	 */
 	public function bulk_upgrade( $plugins, $args = array() ) {
 
 		$defaults = array(
@@ -608,10 +981,12 @@ class Plugin_Upgrader extends WP_Upgrader {
 
 		$this->skin->bulk_header();
 
-		// Only start maintenance mode if:
-		// - running Multisite and there are one or more plugins specified, OR
-		// - a plugin with an update available is currently active.
-		// @TODO: For multisite, maintenance mode should only kick in for individual sites if at all possible.
+		/*
+		 * Only start maintenance mode if:
+		 * - running Multisite and there are one or more plugins specified, OR
+		 * - a plugin with an update available is currently active.
+		 * @TODO: For multisite, maintenance mode should only kick in for individual sites if at all possible.
+		 */
 		$maintenance = ( is_multisite() && ! empty( $plugins ) );
 		foreach ( $plugins as $plugin )
 			$maintenance = $maintenance || ( is_plugin_active( $plugin ) && isset( $current->response[ $plugin] ) );
@@ -635,7 +1010,7 @@ class Plugin_Upgrader extends WP_Upgrader {
 				continue;
 			}
 
-			// Get the URL to the zip file
+			// Get the URL to the zip file.
 			$r = $current->response[ $plugin ];
 
 			$this->skin->plugin_active = is_plugin_active($plugin);
@@ -690,12 +1065,27 @@ class Plugin_Upgrader extends WP_Upgrader {
 		// Cleanup our hooks, in case something else does a upgrade on this connection.
 		remove_filter('upgrader_clear_destination', array($this, 'delete_old_plugin'));
 
-		// Force refresh of plugin update information
+		// Force refresh of plugin update information.
 		wp_clean_plugins_cache( $parsed_args['clear_update_cache'] );
 
 		return $results;
 	}
 
+	/**
+	 * Check a source package to be sure it contains a plugin.
+	 *
+	 * This function is added to the {@see 'upgrader_source_selection'} filter by
+	 * {@see Plugin_Upgrader::install()}.
+	 *
+	 * @since 3.3.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param string $source The path to the downloaded package source.
+	 * @return string|WP_Error The source as passed, or a {@see WP_Error} object
+	 *                         if no plugins were found.
+	 */
 	public function check_package($source) {
 		global $wp_filesystem;
 
@@ -703,16 +1093,19 @@ class Plugin_Upgrader extends WP_Upgrader {
 			return $source;
 
 		$working_directory = str_replace( $wp_filesystem->wp_content_dir(), trailingslashit(WP_CONTENT_DIR), $source);
-		if ( ! is_dir($working_directory) ) // Sanity check, if the above fails, lets not prevent installation.
+		if ( ! is_dir($working_directory) ) // Sanity check, if the above fails, let's not prevent installation.
 			return $source;
 
 		// Check the folder contains at least 1 valid plugin.
 		$plugins_found = false;
-		foreach ( glob( $working_directory . '*.php' ) as $file ) {
-			$info = get_plugin_data($file, false, false);
-			if ( !empty( $info['Name'] ) ) {
-				$plugins_found = true;
-				break;
+		$files = glob( $working_directory . '*.php' );
+		if ( $files ) {
+			foreach ( $files as $file ) {
+				$info = get_plugin_data( $file, false, false );
+				if ( ! empty( $info['Name'] ) ) {
+					$plugins_found = true;
+					break;
+				}
 			}
 		}
 
@@ -722,7 +1115,16 @@ class Plugin_Upgrader extends WP_Upgrader {
 		return $source;
 	}
 
-	// Return plugin info.
+	/**
+	 * Retrieve the path to the file that contains the plugin info.
+	 *
+	 * This isn't used internally in the class, but is called by the skins.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @return string|false The full path to the main plugin file, or false.
+	 */
 	public function plugin_info() {
 		if ( ! is_array($this->result) )
 			return false;
@@ -738,7 +1140,19 @@ class Plugin_Upgrader extends WP_Upgrader {
 		return $this->result['destination_name'] . '/' . $pluginfiles[0];
 	}
 
-	//Hooked to pre_install
+	/**
+	 * Deactivates a plugin before it is upgraded.
+	 *
+	 * Hooked to the {@see 'upgrader_pre_install'} filter by {@see Plugin_Upgrader::upgrade()}.
+	 *
+	 * @since 2.8.0
+	 * @since 4.1.0 Added a return value.
+	 * @access public
+	 *
+	 * @param bool|WP_Error  $return Upgrade offer return.
+	 * @param array          $plugin Plugin package arguments.
+	 * @return bool|WP_Error The passed in $return param or {@see WP_Error}.
+	 */
 	public function deactivate_plugin_before_upgrade($return, $plugin) {
 
 		if ( is_wp_error($return) ) //Bypass.
@@ -756,9 +1170,27 @@ class Plugin_Upgrader extends WP_Upgrader {
 			//Deactivate the plugin silently, Prevent deactivation hooks from running.
 			deactivate_plugins($plugin, true);
 		}
+
+		return $return;
 	}
 
-	//Hooked to upgrade_clear_destination
+	/**
+	 * Delete the old plugin during an upgrade.
+	 *
+	 * Hooked to the {@see 'upgrader_clear_destination'} filter by
+	 * {@see Plugin_Upgrader::upgrade()} and {@see Plugin_Upgrader::bulk_upgrade()}.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+     *
+	 * @param bool|WP_Error $removed
+	 * @param string        $local_destination
+	 * @param string        $remote_destination
+	 * @param array         $plugin
+	 * @return WP_Error|bool
+	 */
 	public function delete_old_plugin($removed, $local_destination, $remote_destination, $plugin) {
 		global $wp_filesystem;
 
@@ -789,17 +1221,42 @@ class Plugin_Upgrader extends WP_Upgrader {
 }
 
 /**
- * Theme Upgrader class for WordPress Themes, It is designed to upgrade/install themes from a local zip, remote zip URL, or uploaded zip file.
+ * Core class used for upgrading/installing themes.
  *
- * @package WordPress
- * @subpackage Upgrader
+ * It is designed to upgrade/install themes from a local zip, remote zip URL,
+ * or uploaded zip file.
+ *
  * @since 2.8.0
+ *
+ * @see WP_Upgrader
  */
 class Theme_Upgrader extends WP_Upgrader {
 
+	/**
+	 * Result of the theme upgrade offer.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var array|WP_Error $result
+	 * @see WP_Upgrader::$result
+	 */
 	public $result;
+
+	/**
+	 * Whether multiple themes are being upgraded/installed in bulk.
+	 *
+	 * @since 2.9.0
+	 * @access public
+	 * @var bool $bulk
+	 */
 	public $bulk = false;
 
+	/**
+	 * Initialize the upgrade strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function upgrade_strings() {
 		$this->strings['up_to_date'] = __('The theme is at the latest version.');
 		$this->strings['no_package'] = __('Update package not available.');
@@ -811,6 +1268,12 @@ class Theme_Upgrader extends WP_Upgrader {
 		$this->strings['process_success'] = __('Theme updated successfully.');
 	}
 
+	/**
+	 * Initialize the install strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function install_strings() {
 		$this->strings['no_package'] = __('Install package not available.');
 		$this->strings['downloading_package'] = __('Downloading install package from <span class="code">%s</span>&#8230;');
@@ -831,7 +1294,20 @@ class Theme_Upgrader extends WP_Upgrader {
 		$this->strings['parent_theme_not_found'] = __('<strong>The parent theme could not be found.</strong> You will need to install the parent theme, <strong>%s</strong>, before you can use this child theme.');
 	}
 
-	public function check_parent_theme_filter($install_result, $hook_extra, $child_result) {
+	/**
+	 * Check if a child theme is being installed and we need to install its parent.
+	 *
+	 * Hooked to the {@see 'upgrader_post_install'} filter by {@see Theme_Upgrader::install()}.
+	 *
+	 * @since 3.4.0
+	 * @access public
+	 *
+	 * @param bool  $install_result
+	 * @param array $hook_extra
+	 * @param array $child_result
+	 * @return type
+	 */
+	public function check_parent_theme_filter( $install_result, $hook_extra, $child_result ) {
 		// Check to see if we need to install a parent theme
 		$theme_info = $this->theme_info();
 
@@ -846,7 +1322,7 @@ class Theme_Upgrader extends WP_Upgrader {
 			return $install_result;
 		}
 
-		// We don't have the parent theme, lets install it
+		// We don't have the parent theme, let's install it.
 		$api = themes_api('theme_information', array('slug' => $theme_info->get('Template'), 'fields' => array('sections' => false, 'tags' => false) ) ); //Save on a bit of bandwidth.
 
 		if ( ! $api || is_wp_error($api) ) {
@@ -890,11 +1366,41 @@ class Theme_Upgrader extends WP_Upgrader {
 		return $install_result;
 	}
 
-	public function hide_activate_preview_actions($actions) {
+	/**
+	 * Don't display the activate and preview actions to the user.
+	 *
+	 * Hooked to the {@see 'install_theme_complete_actions'} filter by
+	 * {@see Theme_Upgrader::check_parent_theme_filter()} when installing
+	 * a child theme and installing the parent theme fails.
+	 *
+	 * @since 3.4.0
+	 * @access public
+	 *
+	 * @param array $actions Preview actions.
+	 * @return array
+	 */
+	public function hide_activate_preview_actions( $actions ) {
 		unset($actions['activate'], $actions['preview']);
 		return $actions;
 	}
 
+	/**
+	 * Install a theme package.
+	 *
+	 * @since 2.8.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the update cache optional.
+	 * @access public
+	 *
+	 * @param string $package The full local path or URI of the package.
+	 * @param array  $args {
+	 *     Optional. Other arguments for installing a theme package. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the updates cache if successful.
+	 *                                    Default true.
+	 * }
+	 *
+	 * @return bool|WP_Error True if the install was successful, false or a {@see WP_Error} object otherwise.
+	 */
 	public function install( $package, $args = array() ) {
 
 		$defaults = array(
@@ -907,6 +1413,8 @@ class Theme_Upgrader extends WP_Upgrader {
 
 		add_filter('upgrader_source_selection', array($this, 'check_package') );
 		add_filter('upgrader_post_install', array($this, 'check_parent_theme_filter'), 10, 3);
+		// Clear cache so wp_update_themes() knows about the new theme.
+		add_action( 'upgrader_process_complete', 'wp_clean_themes_cache', 9, 0 );
 
 		$this->run( array(
 			'package' => $package,
@@ -919,6 +1427,7 @@ class Theme_Upgrader extends WP_Upgrader {
 			),
 		) );
 
+		remove_action( 'upgrader_process_complete', 'wp_clean_themes_cache', 9 );
 		remove_filter('upgrader_source_selection', array($this, 'check_package') );
 		remove_filter('upgrader_post_install', array($this, 'check_parent_theme_filter'));
 
@@ -931,6 +1440,22 @@ class Theme_Upgrader extends WP_Upgrader {
 		return true;
 	}
 
+	/**
+	 * Upgrade a theme.
+	 *
+	 * @since 2.8.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the update cache optional.
+	 * @access public
+	 *
+	 * @param string $theme The theme slug.
+	 * @param array  $args {
+	 *     Optional. Other arguments for upgrading a theme. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the update cache if successful.
+	 *                                    Default true.
+	 * }
+	 * @return bool|WP_Error True if the upgrade was successful, false or a {@see WP_Error} object otherwise.
+	 */
 	public function upgrade( $theme, $args = array() ) {
 
 		$defaults = array(
@@ -981,6 +1506,22 @@ class Theme_Upgrader extends WP_Upgrader {
 		return true;
 	}
 
+	/**
+	 * Upgrade several themes at once.
+	 *
+	 * @since 3.0.0
+	 * @since 3.7.0 The `$args` parameter was added, making clearing the update cache optional.
+	 * @access public
+	 *
+	 * @param array $themes The theme slugs.
+	 * @param array $args {
+	 *     Optional. Other arguments for upgrading several themes at once. Default empty array.
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the update cache if successful.
+	 *                                    Default true.
+	 * }
+	 * @return array[]|false An array of results, or false if unable to connect to the filesystem.
+	 */
 	public function bulk_upgrade( $themes, $args = array() ) {
 
 		$defaults = array(
@@ -1083,7 +1624,22 @@ class Theme_Upgrader extends WP_Upgrader {
 		return $results;
 	}
 
-	public function check_package($source) {
+	/**
+	 * Check that the package source contains a valid theme.
+	 *
+	 * Hooked to the {@see 'upgrader_source_selection'} filter by {@see Theme_Upgrader::install()}.
+	 * It will return an error if the theme doesn't have style.css or index.php
+	 * files.
+	 *
+	 * @since 3.3.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param string $source The full path to the package source.
+	 * @return string|WP_Error The source or a WP_Error.
+	 */
+	public function check_package( $source ) {
 		global $wp_filesystem;
 
 		if ( is_wp_error($source) )
@@ -1091,27 +1647,57 @@ class Theme_Upgrader extends WP_Upgrader {
 
 		// Check the folder contains a valid theme
 		$working_directory = str_replace( $wp_filesystem->wp_content_dir(), trailingslashit(WP_CONTENT_DIR), $source);
-		if ( ! is_dir($working_directory) ) // Sanity check, if the above fails, lets not prevent installation.
+		if ( ! is_dir($working_directory) ) // Sanity check, if the above fails, let's not prevent installation.
 			return $source;
 
 		// A proper archive should have a style.css file in the single subdirectory
-		if ( ! file_exists( $working_directory . 'style.css' ) )
-			return new WP_Error( 'incompatible_archive_theme_no_style', $this->strings['incompatible_archive'], __( 'The theme is missing the <code>style.css</code> stylesheet.' ) );
+		if ( ! file_exists( $working_directory . 'style.css' ) ) {
+			return new WP_Error( 'incompatible_archive_theme_no_style', $this->strings['incompatible_archive'],
+				/* translators: %s: style.css */
+				sprintf( __( 'The theme is missing the %s stylesheet.' ),
+					'<code>style.css</code>'
+				)
+			);
+		}
 
 		$info = get_file_data( $working_directory . 'style.css', array( 'Name' => 'Theme Name', 'Template' => 'Template' ) );
 
-		if ( empty( $info['Name'] ) )
-			return new WP_Error( 'incompatible_archive_theme_no_name', $this->strings['incompatible_archive'], __( "The <code>style.css</code> stylesheet doesn't contain a valid theme header." ) );
+		if ( empty( $info['Name'] ) ) {
+			return new WP_Error( 'incompatible_archive_theme_no_name', $this->strings['incompatible_archive'],
+				/* translators: %s: style.css */
+				sprintf( __( 'The %s stylesheet doesn&#8217;t contain a valid theme header.' ),
+					'<code>style.css</code>'
+				)
+			);
+		}
 
 		// If it's not a child theme, it must have at least an index.php to be legit.
-		if ( empty( $info['Template'] ) && ! file_exists( $working_directory . 'index.php' ) )
-			return new WP_Error( 'incompatible_archive_theme_no_index', $this->strings['incompatible_archive'], __( 'The theme is missing the <code>index.php</code> file.' ) );
+		if ( empty( $info['Template'] ) && ! file_exists( $working_directory . 'index.php' ) ) {
+			return new WP_Error( 'incompatible_archive_theme_no_index', $this->strings['incompatible_archive'],
+				/* translators: %s: index.php */
+				sprintf( __( 'The theme is missing the %s file.' ),
+					'<code>index.php</code>'
+				)
+			);
+		}
 
 		return $source;
 	}
 
+	/**
+	 * Turn on maintenance mode before attempting to upgrade the current theme.
+	 *
+	 * Hooked to the {@see 'upgrader_pre_install'} filter by {@see Theme_Upgrader::upgrade()} and
+	 * {@see Theme_Upgrader::bulk_upgrade()}.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param bool|WP_Error  $return
+	 * @param array          $theme
+	 * @return bool|WP_Error
+	 */
 	public function current_before($return, $theme) {
-
 		if ( is_wp_error($return) )
 			return $return;
 
@@ -1126,6 +1712,19 @@ class Theme_Upgrader extends WP_Upgrader {
 		return $return;
 	}
 
+	/**
+	 * Turn off maintenance mode after upgrading the current theme.
+	 *
+	 * Hooked to the {@see 'upgrader_post_install'} filter by {@see Theme_Upgrader::upgrade()}
+	 * and {@see Theme_Upgrader::bulk_upgrade()}.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param bool|WP_Error  $return
+	 * @param array          $theme
+	 * @return bool|WP_Error
+	 */
 	public function current_after($return, $theme) {
 		if ( is_wp_error($return) )
 			return $return;
@@ -1148,6 +1747,23 @@ class Theme_Upgrader extends WP_Upgrader {
 		return $return;
 	}
 
+	/**
+	 * Delete the old theme during an upgrade.
+	 *
+	 * Hooked to the {@see 'upgrader_clear_destination'} filter by {@see Theme_Upgrader::upgrade()}
+	 * and {@see Theme_Upgrader::bulk_upgrade()}.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param bool   $removed
+	 * @param string $local_destination
+	 * @param string $remote_destination
+	 * @param array  $theme
+	 * @return bool
+	 */
 	public function delete_old_theme( $removed, $local_destination, $remote_destination, $theme ) {
 		global $wp_filesystem;
 
@@ -1167,6 +1783,18 @@ class Theme_Upgrader extends WP_Upgrader {
 		return true;
 	}
 
+	/**
+	 * Get the WP_Theme object for a theme.
+	 *
+	 * @since 2.8.0
+	 * @since 3.0.0 The `$theme` argument was added.
+	 * @access public
+	 *
+	 * @param string $theme The directory name of the theme. This is optional, and if not supplied,
+	 *                      the directory name from the last result will be used.
+	 * @return WP_Theme|false The theme's info object, or false `$theme` is not supplied
+	 *                        and the last result isn't set.
+	 */
 	public function theme_info($theme = null) {
 
 		if ( empty($theme) ) {
@@ -1180,20 +1808,48 @@ class Theme_Upgrader extends WP_Upgrader {
 
 }
 
-add_action( 'upgrader_process_complete', array( 'Language_Pack_Upgrader', 'async_upgrade' ), 20 );
-
 /**
- * Language pack upgrader, for updating translations of plugins, themes, and core.
+ * Core class used for updating/installing language packs (translations)
+ * for plugins, themes, and core.
  *
- * @package WordPress
- * @subpackage Upgrader
  * @since 3.7.0
+ *
+ * @see WP_Upgrader
  */
 class Language_Pack_Upgrader extends WP_Upgrader {
 
+	/**
+	 * Result of the language pack upgrade.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 * @var array|WP_Error $result
+	 * @see WP_Upgrader::$result
+	 */
 	public $result;
+
+	/**
+	 * Whether a bulk upgrade/install is being performed.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 * @var bool $bulk
+	 */
 	public $bulk = true;
 
+	/**
+	 * Asynchronously upgrades language packs after other upgrades have been made.
+	 *
+	 * Hooked to the {@see 'upgrader_process_complete'} action by default.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 * @static
+	 *
+	 * @param false|WP_Upgrader $upgrader Optional. WP_Upgrader instance or false. If `$upgrader` is
+	 *                                    a Language_Pack_Upgrader instance, the method will bail to
+	 *                                    avoid recursion. Otherwise unused. Default false.
+	 */
 	public static function async_upgrade( $upgrader = false ) {
 		// Avoid recursion.
 		if ( $upgrader && $upgrader instanceof Language_Pack_Upgrader ) {
@@ -1206,8 +1862,10 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 			return;
 		}
 
-		// Avoid messing with VCS installs, at least for now.
-		// Noted: this is not the ideal way to accomplish this.
+		/*
+		 * Avoid messing with VCS installs, at least for now.
+		 * Noted: this is not the ideal way to accomplish this.
+		 */
 		$check_vcs = new WP_Automatic_Updater;
 		if ( $check_vcs->is_vcs_checkout( WP_CONTENT_DIR ) ) {
 			return;
@@ -1235,14 +1893,25 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 			return;
 		}
 
-		$skin = new Language_Pack_Upgrader_Skin( array(
-			'skip_header_footer' => true,
-		) );
+		// Re-use the automatic upgrader skin if the parent upgrader is using it.
+		if ( $upgrader && $upgrader->skin instanceof Automatic_Upgrader_Skin ) {
+			$skin = $upgrader->skin;
+		} else {
+			$skin = new Language_Pack_Upgrader_Skin( array(
+				'skip_header_footer' => true,
+			) );
+		}
 
 		$lp_upgrader = new Language_Pack_Upgrader( $skin );
 		$lp_upgrader->bulk_upgrade( $language_updates );
 	}
 
+	/**
+	 * Initialize the upgrade strings.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 */
 	public function upgrade_strings() {
 		$this->strings['starting_upgrade'] = __( 'Some of your translations need updating. Sit tight for a few more seconds while we update them as well.' );
 		$this->strings['up_to_date'] = __( 'The translation is up to date.' ); // We need to silently skip this case
@@ -1253,6 +1922,17 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 		$this->strings['process_success'] = __( 'Translation updated successfully.' );
 	}
 
+	/**
+	 * Upgrade a language pack.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @param string|false $update Optional. Whether an update offer is available. Default false.
+	 * @param array        $args   Optional. Other optional arguments, see
+	 *                             {@see Language_Pack_Upgrader::bulk_upgrade()}. Default empty array.
+	 * @return array|bool|WP_Error The result of the upgrade, or a {@see wP_Error} object instead.
+	 */
 	public function upgrade( $update = false, $args = array() ) {
 		if ( $update ) {
 			$update = array( $update );
@@ -1267,6 +1947,24 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 		return $results[0];
 	}
 
+	/**
+	 * Bulk upgrade language packs.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param array $language_updates Optional. Language pack updates. Default empty array.
+	 * @param array $args {
+	 *     Optional. Other arguments for upgrading multiple language packs. Default empty array
+	 *
+	 *     @type bool $clear_update_cache Whether to clear the update cache when done.
+	 *                                    Default true.
+	 * }
+	 * @return array|bool|WP_Error Will return an array of results, or true if there are no updates,
+	 *                                   false or WP_Error for initial errors.
+	 */
 	public function bulk_upgrade( $language_updates = array(), $args = array() ) {
 		global $wp_filesystem;
 
@@ -1298,7 +1996,7 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 		// Remove any existing upgrade filters from the plugin/theme upgraders #WP29425 & #WP29230
 		remove_all_filters( 'upgrader_pre_install' );
 		remove_all_filters( 'upgrader_clear_destination' );
-		remove_all_filterS( 'upgrader_post_install' );
+		remove_all_filters( 'upgrader_post_install' );
 		remove_all_filters( 'upgrader_source_selection' );
 
 		add_filter( 'upgrader_source_selection', array( $this, 'check_package' ), 10, 2 );
@@ -1368,14 +2066,26 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 		remove_filter( 'upgrader_source_selection', array( $this, 'check_package' ) );
 
 		if ( $parsed_args['clear_update_cache'] ) {
-			wp_clean_themes_cache( true );
-			wp_clean_plugins_cache( true );
-			delete_site_transient( 'update_core' );
+			wp_clean_update_cache();
 		}
 
 		return $results;
 	}
 
+	/**
+	 * Check the package source to make sure there are .mo and .po files.
+	 *
+	 * Hooked to the {@see 'upgrader_source_selection'} filter by
+	 * {@see Language_Pack_Upgrader::bulk_upgrade()}.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 *
+	 * @param string|WP_Error $source
+	 * @param string          $remote_source
+	 */
 	public function check_package( $source, $remote_source ) {
 		global $wp_filesystem;
 
@@ -1394,18 +2104,33 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 				$mo = true;
 		}
 
-		if ( ! $mo || ! $po )
+		if ( ! $mo || ! $po ) {
 			return new WP_Error( 'incompatible_archive_pomo', $this->strings['incompatible_archive'],
-				__( 'The language pack is missing either the <code>.po</code> or <code>.mo</code> files.' ) );
+				/* translators: 1: .po 2: .mo */
+				sprintf( __( 'The language pack is missing either the %1$s or %2$s files.' ),
+					'<code>.po</code>',
+					'<code>.mo</code>'
+				)
+			);
+		}
 
 		return $source;
 	}
 
+	/**
+	 * Get the name of an item being updated.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @param object $update The data for an update.
+	 * @return string The name of the item being updated.
+	 */
 	public function get_name_for_update( $update ) {
 		switch ( $update->type ) {
 			case 'core':
 				return 'WordPress'; // Not translated
-				break;
+
 			case 'theme':
 				$theme = wp_get_theme( $update->slug );
 				if ( $theme->exists() )
@@ -1413,7 +2138,7 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 				break;
 			case 'plugin':
 				$plugin_data = get_plugins( '/' . $update->slug );
-				$plugin_data = array_shift( $plugin_data );
+				$plugin_data = reset( $plugin_data );
 				if ( $plugin_data )
 					return $plugin_data['Name'];
 				break;
@@ -1424,14 +2149,23 @@ class Language_Pack_Upgrader extends WP_Upgrader {
 }
 
 /**
- * Core Upgrader class for WordPress. It allows for WordPress to upgrade itself in combination with the wp-admin/includes/update-core.php file
+ * Core class used for updating core.
  *
- * @package WordPress
- * @subpackage Upgrader
+ * It allows for WordPress to upgrade itself in combination with
+ * the wp-admin/includes/update-core.php file.
+ *
  * @since 2.8.0
+ *
+ * @see WP_Upgrader
  */
 class Core_Upgrader extends WP_Upgrader {
 
+	/**
+	 * Initialize the upgrade strings.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 */
 	public function upgrade_strings() {
 		$this->strings['up_to_date'] = __('WordPress is at the latest version.');
 		$this->strings['no_package'] = __('Update package not available.');
@@ -1443,6 +2177,28 @@ class Core_Upgrader extends WP_Upgrader {
 		$this->strings['rollback_was_required'] = __( 'Due to an error during updating, WordPress has rolled back to your previous version.' );
 	}
 
+	/**
+	 * Upgrade WordPress core.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @global WP_Filesystem_Base $wp_filesystem Subclass
+	 * @global callable           $_wp_filesystem_direct_method
+	 *
+	 * @param object $current Response object for whether WordPress is current.
+	 * @param array  $args {
+	 *        Optional. Arguments for upgrading WordPress core. Default empty array.
+	 *
+	 *        @type bool $pre_check_md5    Whether to check the file checksums before
+	 *                                     attempting the upgrade. Default true.
+	 *        @type bool $attempt_rollback Whether to attempt to rollback the chances if
+	 *                                     there is a problem. Default false.
+	 *        @type bool $do_rollback      Whether to perform this "upgrade" as a rollback.
+	 *                                     Default false.
+	 * }
+	 * @return null|false|WP_Error False or WP_Error on failure, null on success.
+	 */
 	public function upgrade( $current, $args = array() ) {
 		global $wp_filesystem;
 
@@ -1454,6 +2210,7 @@ class Core_Upgrader extends WP_Upgrader {
 			'pre_check_md5'    => true,
 			'attempt_rollback' => false,
 			'do_rollback'      => false,
+			'allow_relaxed_file_ownership' => false,
 		);
 		$parsed_args = wp_parse_args( $args, $defaults );
 
@@ -1464,7 +2221,7 @@ class Core_Upgrader extends WP_Upgrader {
 		if ( !isset( $current->response ) || $current->response == 'latest' )
 			return new WP_Error('up_to_date', $this->strings['up_to_date']);
 
-		$res = $this->fs_connect( array(ABSPATH, WP_CONTENT_DIR) );
+		$res = $this->fs_connect( array( ABSPATH, WP_CONTENT_DIR ), $parsed_args['allow_relaxed_file_ownership'] );
 		if ( ! $res || is_wp_error( $res ) ) {
 			return $res;
 		}
@@ -1561,6 +2318,7 @@ class Core_Upgrader extends WP_Upgrader {
 				'success'          => true,
 				'fs_method'        => $wp_filesystem->method,
 				'fs_method_forced' => defined( 'FS_METHOD' ) || has_filter( 'filesystem_method' ),
+				'fs_method_direct' => !empty( $GLOBALS['_wp_filesystem_direct_method'] ) ? $GLOBALS['_wp_filesystem_direct_method'] : '',
 				'time_taken'       => time() - $start_time,
 				'reported'         => $wp_version,
 				'attempted'        => $current->version,
@@ -1590,8 +2348,18 @@ class Core_Upgrader extends WP_Upgrader {
 		return $result;
 	}
 
-	// Determines if this WordPress Core version should update to $offered_ver or not
-	public static function should_update_to_version( $offered_ver /* x.y.z */ ) {
+	/**
+	 * Determines if this WordPress Core version should update to an offered version or not.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @static
+	 *
+	 * @param string $offered_ver The offered version, of the format x.y.z.
+	 * @return bool True if we should update to the offered version, otherwise false.
+	 */
+	public static function should_update_to_version( $offered_ver ) {
 		include( ABSPATH . WPINC . '/version.php' ); // $wp_version; // x.y.z
 
 		$current_branch = implode( '.', array_slice( preg_split( '/[.-]/', $wp_version  ), 0, 2 ) ); // x.y
@@ -1689,6 +2457,17 @@ class Core_Upgrader extends WP_Upgrader {
 		return false;
 	}
 
+	/**
+	 * Compare the disk file checksums against the expected checksums.
+	 *
+	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @global string $wp_version
+	 * @global string $wp_local_package
+	 *
+	 * @return bool True if the checksums match, otherwise false.
+	 */
 	public function check_files() {
 		global $wp_version, $wp_local_package;
 
@@ -1710,18 +2489,52 @@ class Core_Upgrader extends WP_Upgrader {
 }
 
 /**
- * Upgrade Skin helper for File uploads. This class handles the upload process and passes it as if it's a local file to the Upgrade/Installer functions.
+ * Core class used for handling file uploads.
  *
- * @package WordPress
- * @subpackage Upgrader
+ * This class handles the upload process and passes it as if it's a local file
+ * to the Upgrade/Installer functions.
+ *
  * @since 2.8.0
  */
 class File_Upload_Upgrader {
+
+	/**
+	 * The full path to the file package.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var string $package
+	 */
 	public $package;
+
+	/**
+	 * The name of the file.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 * @var string $filename
+	 */
 	public $filename;
+
+	/**
+	 * The ID of the attachment post for this file.
+	 *
+	 * @since 3.3.0
+	 * @access public
+	 * @var int $id
+	 */
 	public $id = 0;
 
-	public function __construct($form, $urlholder) {
+	/**
+	 * Construct the upgrader for a form.
+	 *
+	 * @since 2.8.0
+	 * @access public
+	 *
+	 * @param string $form      The name of the form the file was uploaded from.
+	 * @param string $urlholder The name of the `GET` parameter that holds the filename.
+	 */
+	public function __construct( $form, $urlholder ) {
 
 		if ( empty($_FILES[$form]['name']) && empty($_GET[$urlholder]) )
 			wp_die(__('Please select a file'));
@@ -1772,6 +2585,14 @@ class File_Upload_Upgrader {
 		}
 	}
 
+	/**
+	 * Delete the attachment/uploaded file.
+	 *
+	 * @since 3.2.2
+	 * @access public
+	 *
+	 * @return bool Whether the cleanup was successful.
+	 */
 	public function cleanup() {
 		if ( $this->id )
 			wp_delete_attachment( $this->id );
@@ -1784,10 +2605,8 @@ class File_Upload_Upgrader {
 }
 
 /**
- * The WordPress automatic background updater.
+ * Core class used for handling automatic background updates.
  *
- * @package WordPress
- * @subpackage Upgrader
  * @since 3.7.0
  */
 class WP_Automatic_Updater {
@@ -1796,6 +2615,7 @@ class WP_Automatic_Updater {
 	 * Tracks update results during processing.
 	 *
 	 * @var array
+	 * @access protected
 	 */
 	protected $update_results = array();
 
@@ -1803,13 +2623,14 @@ class WP_Automatic_Updater {
 	 * Whether the entire automatic updater is disabled.
 	 *
 	 * @since 3.7.0
+	 * @access public
 	 */
 	public function is_disabled() {
 		// Background updates are disabled if you don't want file changes.
 		if ( defined( 'DISALLOW_FILE_MODS' ) && DISALLOW_FILE_MODS )
 			return true;
 
-		if ( defined( 'WP_INSTALLING' ) )
+		if ( wp_installing() )
 			return true;
 
 		// More fine grained control can be done through the WP_AUTO_UPDATE_CORE constant and filters.
@@ -1843,6 +2664,7 @@ class WP_Automatic_Updater {
 	 * how things get updated.
 	 *
 	 * @since 3.7.0
+	 * @access public
 	 *
 	 * @param string $context The filesystem path to check, in addition to ABSPATH.
 	 */
@@ -1895,6 +2717,9 @@ class WP_Automatic_Updater {
 	 * Tests to see if we can and should update a specific item.
 	 *
 	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @global wpdb $wpdb WordPress database abstraction object.
 	 *
 	 * @param string $type    The type of update being checked: 'core', 'theme',
 	 *                        'plugin', 'translation'.
@@ -1909,8 +2734,14 @@ class WP_Automatic_Updater {
 		if ( $this->is_disabled() )
 			return false;
 
+		// Only relax the filesystem checks when the update doesn't include new files
+		$allow_relaxed_file_ownership = false;
+		if ( 'core' == $type && isset( $item->new_files ) && ! $item->new_files ) {
+			$allow_relaxed_file_ownership = true;
+		}
+
 		// If we can't do an auto core update, we may still be able to email the user.
-		if ( ! $skin->request_filesystem_credentials( false, $context ) || $this->is_vcs_checkout( $context ) ) {
+		if ( ! $skin->request_filesystem_credentials( false, $context, $allow_relaxed_file_ownership ) || $this->is_vcs_checkout( $context ) ) {
 			if ( 'core' == $type )
 				$this->send_core_update_notification_email( $item );
 			return false;
@@ -1925,15 +2756,15 @@ class WP_Automatic_Updater {
 		/**
 		 * Filter whether to automatically update core, a plugin, a theme, or a language.
 		 *
-		 * The dynamic portion of the hook name, $type, refers to the type of update
+		 * The dynamic portion of the hook name, `$type`, refers to the type of update
 		 * being checked. Can be 'core', 'theme', 'plugin', or 'translation'.
 		 *
 		 * Generally speaking, plugins, themes, and major core versions are not updated
 		 * by default, while translations and minor and development versions for core
 		 * are updated by default.
 		 *
-		 * See the allow_dev_auto_core_updates, allow_minor_auto_core_updates, and
-		 * allow_major_auto_core_updates filters for a more straightforward way to
+		 * See the {@see 'allow_dev_auto_core_updates', {@see 'allow_minor_auto_core_updates'},
+		 * and {@see 'allow_major_auto_core_updates'} filters for a more straightforward way to
 		 * adjust core updates.
 		 *
 		 * @since 3.7.0
@@ -1970,6 +2801,7 @@ class WP_Automatic_Updater {
 	 * Notifies an administrator of a core update.
 	 *
 	 * @since 3.7.0
+	 * @access protected
 	 *
 	 * @param object $item The update offer.
 	 */
@@ -2013,9 +2845,12 @@ class WP_Automatic_Updater {
 	 * Update an item, if appropriate.
 	 *
 	 * @since 3.7.0
+	 * @access public
 	 *
 	 * @param string $type The type of update being checked: 'core', 'theme', 'plugin', 'translation'.
 	 * @param object $item The update offer.
+	 *
+	 * @return null|WP_Error
 	 */
 	public function update( $type, $item ) {
 		$skin = new Automatic_Upgrader_Skin;
@@ -2045,6 +2880,18 @@ class WP_Automatic_Updater {
 		if ( ! $this->should_update( $type, $item, $context ) )
 			return false;
 
+		/**
+		 * Fires immediately prior to an auto-update.
+		 *
+		 * @since 4.4.0
+		 *
+		 * @param string $type    The type of update being checked: 'core', 'theme', 'plugin', or 'translation'.
+		 * @param object $item    The update offer.
+		 * @param string $context The filesystem context (a path) against which filesystem access and status
+		 *                        should be checked.
+		 */
+		do_action( 'pre_auto_update', $type, $item, $context );
+
 		$upgrader_item = $item;
 		switch ( $type ) {
 			case 'core':
@@ -2070,6 +2917,11 @@ class WP_Automatic_Updater {
 				break;
 		}
 
+		$allow_relaxed_file_ownership = false;
+		if ( 'core' == $type && isset( $item->new_files ) && ! $item->new_files ) {
+			$allow_relaxed_file_ownership = true;
+		}
+
 		// Boom, This sites about to get a whole new splash of paint!
 		$upgrade_result = $upgrader->upgrade( $upgrader_item, array(
 			'clear_update_cache' => false,
@@ -2077,6 +2929,8 @@ class WP_Automatic_Updater {
 			'pre_check_md5'      => false,
 			// Only available for core updates.
 			'attempt_rollback'   => true,
+			// Allow relaxed file ownership in some scenarios
+			'allow_relaxed_file_ownership' => $allow_relaxed_file_ownership,
 		) );
 
 		// If the filesystem is unavailable, false is returned.
@@ -2084,7 +2938,7 @@ class WP_Automatic_Updater {
 			$upgrade_result = new WP_Error( 'fs_unavailable', __( 'Could not access filesystem.' ) );
 		}
 
-		// Core doesn't output this, so lets append it so we don't get confused.
+		// Core doesn't output this, so let's append it so we don't get confused.
 		if ( 'core' == $type ) {
 			if ( is_wp_error( $upgrade_result ) ) {
 				$skin->error( __( 'Installation Failed' ), $upgrade_result );
@@ -2107,6 +2961,10 @@ class WP_Automatic_Updater {
 	 * Kicks off the background update process, looping through all pending updates.
 	 *
 	 * @since 3.7.0
+	 * @access public
+	 *
+	 * @global wpdb   $wpdb
+	 * @global string $wp_version
 	 */
 	public function run() {
 		global $wpdb, $wp_version;
@@ -2198,9 +3056,7 @@ class WP_Automatic_Updater {
 			}
 
 			// Clear existing caches
-			wp_clean_plugins_cache();
-			wp_clean_themes_cache();
-			delete_site_transient( 'update_core' );
+			wp_clean_update_cache();
 
 			wp_version_check();  // check for Core updates
 			wp_update_themes();  // Check for Theme updates
@@ -2244,7 +3100,12 @@ class WP_Automatic_Updater {
 	 * If we tried to perform a core update, check if we should send an email,
 	 * and if we need to avoid processing future updates.
 	 *
-	 * @param object $update_result The result of the core update. Includes the update offer and result.
+	 * @since Unknown
+	 * @access protected
+	 *
+	 * @global string $wp_version
+	 *
+	 * @param object|WP_Error $update_result The result of the core update. Includes the update offer and result.
 	 */
 	protected function after_core_update( $update_result ) {
 		global $wp_version;
@@ -2330,6 +3191,9 @@ class WP_Automatic_Updater {
 	 * Sends an email upon the completion or failure of a background core update.
 	 *
 	 * @since 3.7.0
+	 * @access protected
+	 *
+	 * @global string $wp_version
 	 *
 	 * @param string $type        The type of email to send. Can be one of 'success', 'fail', 'manual', 'critical'.
 	 * @param object $core_update The update offer that was attempted.
@@ -2527,6 +3391,7 @@ class WP_Automatic_Updater {
 	 * Prepares and sends an email of a full log of background update results, useful for debugging and geekery.
 	 *
 	 * @since 3.7.0
+	 * @access protected
 	 */
 	protected function send_debug_email() {
 		$update_count = 0;
@@ -2588,15 +3453,15 @@ class WP_Automatic_Updater {
 
 		$site_title = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
 		if ( $failures ) {
-			$body[] = trim( __( "
-BETA TESTING?
+			$body[] = trim( __(
+"BETA TESTING?
 =============
 
 This debugging email is sent when you are using a development version of WordPress.
 
 If you think these failures might be due to a bug in WordPress, could you report it?
  * Open a thread in the support forums: https://wordpress.org/support/forum/alphabeta
- * Or, if you're comfortable writing a bug report: http://core.trac.wordpress.org/
+ * Or, if you're comfortable writing a bug report: https://core.trac.wordpress.org/
 
 Thanks! -- The WordPress Team" ) );
 			$body[] = '';
@@ -2606,8 +3471,8 @@ Thanks! -- The WordPress Team" ) );
 			$subject = sprintf( __( '[%s] Background updates have finished' ), $site_title );
 		}
 
-		$body[] = trim( __( '
-UPDATE LOG
+		$body[] = trim( __(
+'UPDATE LOG
 ==========' ) );
 		$body[] = '';
 

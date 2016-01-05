@@ -89,17 +89,17 @@ class WP_Dependencies {
 	 * @return array Handles of items that have been processed.
 	 */
 	public function do_items( $handles = false, $group = false ) {
-		/**
+		/*
 		 * If nothing is passed, print the queue. If a string is passed,
 		 * print that item. If an array is passed, print those items.
 		 */
 		$handles = false === $handles ? $this->queue : (array) $handles;
 		$this->all_deps( $handles );
 
-		foreach( $this->to_do as $key => $handle ) {
+		foreach ( $this->to_do as $key => $handle ) {
 			if ( !in_array($handle, $this->done, true) && isset($this->registered[$handle]) ) {
 
-				/**
+				/*
 				 * A single item may alias a set of items, by having dependencies,
 				 * but no source. Queuing the item queues the dependencies.
 				 *
@@ -107,13 +107,13 @@ class WP_Dependencies {
 				 *   <code>add( 'scriptaculous', false, array( 'scriptaculous-dragdrop', 'scriptaculous-slider', 'scriptaculous-controls' ) );</code>
 				 *
 				 * The src property is false.
-				**/
+				 */
 				if ( ! $this->registered[$handle]->src ) {
 					$this->done[] = $handle;
 					continue;
 				}
 
-				/**
+				/*
 				 * Attempt to process the item. If successful,
 				 * add the handle to the done array.
 				 *
@@ -213,7 +213,7 @@ class WP_Dependencies {
 	 * @param array  $deps   Optional. An array of item handle strings on which this item depends.
 	 * @param string $ver    Optional. Version (used for cache busting).
 	 * @param mixed  $args   Optional. Custom property of the item. NOT the class property $args. Examples: $media, $in_footer.
-	 * @return bool True on success, false on failure.
+	 * @return bool Whether the item has been registered. True on success, false on failure.
 	 */
 	public function add( $handle, $src, $deps = array(), $ver = false, $args = null ) {
 		if ( isset($this->registered[$handle]) )
@@ -331,7 +331,7 @@ class WP_Dependencies {
 	 *
 	 * @param array  $queue  An array of queued _WP_Dependency handle objects.
 	 * @param string $handle Name of the item. Should be unique.
-	 * @return boolean Whether the handle is found after recursively searching the dependency tree.
+	 * @return bool Whether the handle is found after recursively searching the dependency tree.
 	 */
 	protected function recurse_deps( $queue, $handle ) {
 		foreach ( $queue as $queued ) {
